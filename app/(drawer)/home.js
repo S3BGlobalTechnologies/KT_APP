@@ -1,11 +1,19 @@
 import { logMetaEvent } from '@/utils/metaEvents';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, Animated, Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
 import HomeLanguageDropdown from '@/components/ui/HomeLanguageDropdown';
+import MindAnalysisReading from '@/components/ui/MindAnalysisReading';
 // // import { useKeepAwake } from 'expo-keep-awake';
 import VideoCarousel from '@/components/ui/videoCarousel';
+import {
+  MIND_ANALYSIS_REPEAT_AFTER_MS,
+  checkMindAnalysisAccess,
+  recordMindAnalysisSession,
+  requestMindAnalysisReading,
+  resolveMindAnalysisUserId,
+} from '@/lib/mindAnalysis';
 import { CHAT_REMAINING_KEY, useChatTimer } from "@/contexts/chatTimerContext";
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
@@ -112,19 +120,25 @@ function HomeLiveBand() {
   );
 }
 
-export default function Home() {
-  const freeBadgePulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(freeBadgePulse, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-        Animated.timing(freeBadgePulse, { toValue: 1, duration: 800, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [freeBadgePulse]);
+// The reading language is independent of the app UI language, so this list is
+// not limited to the seven that have i18n blocks, and it includes Hinglish.
+const MIND_ANALYSIS_LANGUAGES = [
+  { value: 'English', label: 'English' },
+  { value: 'Hinglish', label: 'Hinglish' },
+  { value: 'Hindi', label: 'हिंदी' },
+  { value: 'Bengali', label: 'বাংলা' },
+  { value: 'Telugu', label: 'తెలుగు' },
+  { value: 'Marathi', label: 'मराठी' },
+  { value: 'Tamil', label: 'தமிழ்' },
+  { value: 'Gujarati', label: 'ગુજરાતી' },
+  { value: 'Kannada', label: 'ಕನ್ನಡ' },
+  { value: 'Malayalam', label: 'മലയാളം' },
+  { value: 'Punjabi', label: 'ਪੰਜਾਬੀ' },
+  { value: 'Odia', label: 'ଓଡ଼ିଆ' },
+  { value: 'Assamese', label: 'অসমীয়া' },
+];
 
+export default function Home() {
 // console.log("API URL:", process.env.EXPO_PUBLIC_API_BASE_URL);
 
  const checkedRef = useRef(false);
@@ -139,7 +153,7 @@ useFocusEffect(
       const result = await verifyToken();
 
       if (!result.valid) {
-        await AsyncStorage.removeItem('AUTH_TOKEN');
+        await AsyncStorage.multiRemove(['AUTH_TOKEN', 'MIND_ANALYSIS_LAST_RUN_AT']);
         router.replace('/'); // login or index
       }
     };
@@ -234,6 +248,116 @@ useFocusEffect(
   );
 
 
+
+  /* ================= MIND ANALYSIS (free reading) ================= */
+
+  // null | 'intro' | 'language' | 'reading'
+  const [maStage, setMaStage] = useState(null);
+  const [maReading, setMaReading] = useState('');
+  const [maError, setMaError] = useState('');
+  const [maLoading, setMaLoading] = useState(false);
+  // Epoch ms at which the 10-minute window closes; 0 means "available now".
+  const [maUnlockAt, setMaUnlockAt] = useState(0);
+  const maMountedRef = useRef(true);
+  // The userId the gate has already been asked about, so re-focus does not
+  // hammer the endpoint (profile gets a new identity on every focus).
+  const maCheckedForRef = useRef(null);
+
+  useEffect(() => {
+    maMountedRef.current = true;
+    return () => {
+      maMountedRef.current = false;
+    };
+  }, []);
+
+  const checkMindAnalysisGate = useCallback(async () => {
+    const token = await AsyncStorage.getItem('AUTH_TOKEN');
+    if (!token || !profile) return;
+
+    const userId = resolveMindAnalysisUserId(profile);
+    const verdict = await checkMindAnalysisAccess(userId, token);
+    if (!maMountedRef.current) return;
+
+    console.log('MIND_ANALYSIS_TRIGGER:', {
+      stage: 'home',
+      willRun: verdict.allowed,
+      reason: verdict.reason,
+      remainingMs: verdict.remainingMs,
+      sessionStartLocal: verdict.sessionStartLocal,
+      enabledAtLocal: verdict.enabledAtLocal,
+      nowLocal: verdict.nowLocal,
+    });
+
+    if (verdict.allowed) {
+      setMaUnlockAt(0);
+      // Never interrupt a popup that is already open.
+      setMaStage((current) => current || 'intro');
+    } else {
+      setMaUnlockAt(Date.now() + verdict.remainingMs);
+    }
+  }, [profile]);
+
+  // First visit after the profile loads. An existing user has no access record,
+  // so the GET comes back empty and the popup shows straight away.
+  useFocusEffect(
+    useCallback(() => {
+      const userId = resolveMindAnalysisUserId(profile);
+      if (!userId || maCheckedForRef.current === userId) return;
+      maCheckedForRef.current = userId;
+      checkMindAnalysisGate();
+    }, [profile, checkMindAnalysisGate])
+  );
+
+  // Re-offer the moment the 10-minute window closes.
+  useEffect(() => {
+    if (!maUnlockAt) return undefined;
+    const delay = Math.max(1000, maUnlockAt - Date.now() + 500);
+    const id = setTimeout(() => {
+      setMaUnlockAt(0);
+      checkMindAnalysisGate();
+    }, delay);
+    return () => clearTimeout(id);
+  }, [maUnlockAt, checkMindAnalysisGate]);
+
+  const runMindAnalysisReading = useCallback(
+    async (chosenLanguage) => {
+      setMaStage('reading');
+      setMaLoading(true);
+      setMaError('');
+      setMaReading('');
+
+      const sessionId = Date.now().toString();
+      const token = (await AsyncStorage.getItem('AUTH_TOKEN')) || '';
+      const userId = resolveMindAnalysisUserId(profile);
+
+      try {
+        await AsyncStorage.setItem('CHAT_SESSION_ID', sessionId);
+        const answer = await requestMindAnalysisReading(
+          profile,
+          sessionId,
+          chosenLanguage,
+          token
+        );
+        if (maMountedRef.current) setMaReading(answer);
+
+        await recordMindAnalysisSession(sessionId, token, userId);
+        if (maMountedRef.current) setMaUnlockAt(Date.now() + MIND_ANALYSIS_REPEAT_AFTER_MS);
+      } catch (e) {
+        console.warn('MIND_ANALYSIS_ERROR:', e?.message || e);
+        if (maMountedRef.current) setMaError(t('onboardingReadingFailed'));
+      } finally {
+        if (maMountedRef.current) setMaLoading(false);
+      }
+    },
+    [profile, t]
+  );
+
+  // Dismissing runs no reading, so it must not consume the server window — just
+  // snooze the offer locally for the same 10 minutes so it does not nag.
+  const dismissMindAnalysis = useCallback(() => {
+    setMaStage(null);
+    setMaUnlockAt(Date.now() + MIND_ANALYSIS_REPEAT_AFTER_MS);
+  }, []);
 
 const formatTime = (seconds) => {
   const m = Math.floor(seconds / 60);
@@ -363,7 +487,6 @@ const formatTime = (seconds) => {
       img: require('@/assets/images/chat.png'),
       label: t('chat'),
       sub: t('withastrologer'),
-      free: true,
       onPress: () => router.push('/chat'),
     },
     {
@@ -624,11 +747,6 @@ const formatTime = (seconds) => {
               style={({ pressed }) => [styles.serviceCard, pressed && { transform: [{ scale: 0.97 }], opacity: 0.9 }]}
               onPress={s.onPress}
             >
-              {s.free ? (
-                <Animated.View style={[styles.freeBadge, { opacity: freeBadgePulse }]}>
-                  <Text style={styles.freeBadgeText}>{t('freeQuestionBadge')}</Text>
-                </Animated.View>
-              ) : null}
               <View style={styles.serviceIconRing}>
                 <Image source={s.img} style={styles.serviceIcon} />
               </View>
@@ -797,6 +915,94 @@ const formatTime = (seconds) => {
           </TouchableOpacity>
         </LinearGradient>
       </View>
+
+      {/* Free reading: intro -> language -> reading */}
+      <Modal
+        visible={maStage !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (maStage === 'reading' && !maLoading) setMaStage(null);
+          else if (maStage === 'intro') dismissMindAnalysis();
+        }}
+      >
+        <View style={styles.maOverlay}>
+          <View style={styles.maCard}>
+            {maStage === 'intro' ? (
+              <>
+                <Text style={styles.maTitle}>{t('mindAnalysisIntroTitle')}</Text>
+                <Text style={styles.maDesc}>{t('mindAnalysisIntroDesc')}</Text>
+                <TouchableOpacity
+                  style={styles.maPrimaryBtn}
+                  onPress={() => setMaStage('language')}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={colors.goldGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.maPrimaryInner}
+                  >
+                    <Text style={styles.maPrimaryText}>{t('mindAnalysisIntroCta')}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.maSecondaryBtn} onPress={dismissMindAnalysis}>
+                  <Text style={styles.maSecondaryText}>{t('mindAnalysisIntroDismiss')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+
+            {maStage === 'language' ? (
+              <>
+                <Text style={styles.maTitle}>{t('mindAnalysisLanguageTitle')}</Text>
+                <Text style={styles.maDesc}>{t('mindAnalysisLanguageDesc')}</Text>
+                <ScrollView
+                  style={styles.maLangList}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {MIND_ANALYSIS_LANGUAGES.map((option) => {
+                    const active = option.value === (profile?.language || 'English');
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={styles.maLangRow}
+                        onPress={() => runMindAnalysisReading(option.value)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[styles.maLangText, active && styles.maLangTextActive]}>
+                          {option.label}
+                        </Text>
+                        {active ? (
+                          <Ionicons name="checkmark" size={16} color={colors.gold} />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            ) : null}
+
+            {maStage === 'reading' ? (
+              <>
+                <Text style={styles.maTitle}>{t('onboardingReadingTitle')}</Text>
+                <View style={{ marginTop: 14 }}>
+                  <MindAnalysisReading
+                    text={maReading}
+                    loading={maLoading}
+                    error={maError}
+                    maxHeight={340}
+                    onContinue={() => {
+                      setMaStage(null);
+                      router.push('/chat');
+                    }}
+                  />
+                </View>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -924,12 +1130,49 @@ const makeStyles = (colors, isDark) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(228,173,13,0.35)',
   },
-  freeBadge: {
-    position: 'absolute', top: -9, alignSelf: 'center',
-    backgroundColor: '#E4AD0D', paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 8, zIndex: 5,
+  // Mind-analysis popup (intro -> language -> reading)
+  maOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
-  freeBadgeText: { color: '#231A05', fontWeight: '800', fontSize: 8.5, textAlign: 'center' },
+  maCard: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '85%',
+    backgroundColor: colors.elevated,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    padding: 20,
+  },
+  maTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  maDesc: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  maPrimaryBtn: { borderRadius: 12, overflow: 'hidden', marginTop: 20 },
+  maPrimaryInner: { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
+  maPrimaryText: { color: colors.onGold, fontSize: 15, fontWeight: '800' },
+  maSecondaryBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 6 },
+  maSecondaryText: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
+  maLangList: { marginTop: 16, alignSelf: 'stretch' },
+  maLangRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  maLangText: { color: colors.text, fontSize: 15 },
+  maLangTextActive: { color: colors.goldText, fontWeight: '700' },
 
   // Trending chips
   trendingChip: {

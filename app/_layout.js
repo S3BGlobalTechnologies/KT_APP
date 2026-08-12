@@ -257,8 +257,13 @@ function ThemedShell() {
       ) : null}
       <IAPProvider>
         <ChatTimerProvider>
+          {/* No LanguageProvider here: one mounted at this level does not reach
+              the screens, so it silently left every label showing its raw key
+              name. Each consumer mounts its own — (drawer)/_layout.js for the
+              drawer, app/onboarding.js for onboarding. */}
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
+            <Stack.Screen name="onboarding" />
           </Stack>
         </ChatTimerProvider>
       </IAPProvider>

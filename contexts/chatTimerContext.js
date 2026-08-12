@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
-const ChatTimerContext = createContext();
+// A default matters: createContext() with no argument defaults to undefined, so
+// any read from outside the provider destructures undefined and crashes the
+// screen. Degrade to "no timer running" instead.
+const DEFAULT_CHAT_TIMER = { remainingSeconds: 0 };
+
+const ChatTimerContext = createContext(DEFAULT_CHAT_TIMER);
 
 export const CHAT_REMAINING_KEY = "CHAT_REMAINING_SECONDS";
 
@@ -64,4 +69,14 @@ export const ChatTimerProvider = ({ children }) => {
   );
 };
 
-export const useChatTimer = () => useContext(ChatTimerContext);
+export const useChatTimer = () => {
+  const value = useContext(ChatTimerContext);
+  if (!value) {
+    // Reachable on a stale Fast Refresh tree, or if a screen ever renders
+    // outside ChatTimerProvider. Warn rather than fail silently — the symptom
+    // is the live timer band simply never appearing.
+    console.warn('useChatTimer: no ChatTimerProvider above this component');
+    return DEFAULT_CHAT_TIMER;
+  }
+  return value;
+};

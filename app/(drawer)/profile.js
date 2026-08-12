@@ -218,10 +218,13 @@ export default function Profile() {
         setIsFirstTimeUser(false);
       } catch {}
 
-      setToast({ message: t('Profile updated successfully') || t('profileUpdatedSuccessfully'), type: 'success' });
+      // t() never returns falsy — a missing key falls back to the key name — so
+      // the old `t(<English sentence>) || t(<realKey>)` form always took the
+      // first branch and showed that sentence verbatim, untranslated.
+      setToast({ message: t('profileUpdatedSuccessfully'), type: 'success' });
       setTimeout(() => router.replace('/home'), 1200);
     } catch (err) {
-      setToast({ message: err?.message || t('Network error') || t('networkError'), type: 'error' });
+      setToast({ message: err?.message || t('networkError'), type: 'error' });
     } finally {
       setLoading(false);
       setTimeout(() => setToast(null), 3000);

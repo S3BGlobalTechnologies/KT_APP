@@ -1,10 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +9,14 @@ import {
   View,
 } from 'react-native';
 
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
 import { radius } from '@/lib/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const POST_EXIT_FEEDBACK_URL =
   `${process.env.EXPO_PUBLIC_API_BASE_URL}/kundlikonnect/post-exit-feedback`;
@@ -52,6 +50,7 @@ const clearUserSessionData = async () => {
     'CHAT_SESSION_ID',
     'CHAT_REMAINING_SECONDS',
     'paymentStatus',
+    'MIND_ANALYSIS_LAST_RUN_AT',
   ]);
 };
 
@@ -144,6 +143,7 @@ useFocusEffect(
   const { t } = useLanguage();
   const { colors, isDark, toggleTheme } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const DrawerItem = ({ icon, label, onPress }) => (
     <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.7}>
@@ -249,9 +249,19 @@ useFocusEffect(
 
   
   return (
+    <>
     <DrawerContentScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ paddingTop: 15, paddingBottom: 15, paddingHorizontal: horizontalPadding, backgroundColor: colors.bg }}
+      contentContainerStyle={{
+        // DrawerContentScrollView normally applies the safe-area insets itself,
+        // but passing contentContainerStyle replaces them — which is why the
+        // header sat under the status bar and Delete Account was cut off by the
+        // gesture bar. Add them back on top of the design padding.
+        paddingTop: insets.top + 15,
+        paddingBottom: insets.bottom + 15,
+        paddingHorizontal: horizontalPadding,
+        backgroundColor: colors.bg,
+      }}
     >
       {/* HEADER */}
       <View style={styles.header}>
@@ -337,104 +347,76 @@ useFocusEffect(
 
 
       <Text style={styles.version}>{t('appVersion')} 1.0.0</Text>
-      <Modal
-  visible={logoutConfirmVisible}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setLogoutConfirmVisible(false)}
->
-  <View style={styles.modalBackdrop}>
-    <View style={styles.modalCard}>
-      <Text style={styles.modalTitle}>{t('confirmTitle')}</Text>
-      <Text style={styles.modalDesc}>
-{t('logoutConfirmDesc')}</Text>
-
-      <View style={styles.modalActions}>
-        <TouchableOpacity
-          style={[styles.modalBtn, styles.modalCancel]}
-          onPress={() => setLogoutConfirmVisible(false)}
-        >
-          <Text style={styles.modalCancelText}>{t('noLabel')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.modalBtn, styles.modalConfirm]}
-          onPress={() => {
-            setLogoutConfirmVisible(false);
-            signOutHandler();
-          }}
-        >
-          <Text style={styles.modalConfirmText}>{t('yesLabel')}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
-      <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
-        <KeyboardAvoidingView
-          style={styles.modalKeyboardAvoiding}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 32 : 0}
-        >
-          <View style={styles.modalBackdrop}>
-            <ScrollView
-              contentContainerStyle={styles.modalScrollContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>{t('confirmTitle')}</Text>
-                <Text style={styles.modalDesc}>{t('deleteAccountConfirmDesc')}</Text>
-                <Text style={styles.inputLabel}>{t('deleteReasonLabel')}</Text>
-                <TouchableOpacity
-                  style={styles.selectBox}
-                  activeOpacity={0.8}
-                  onPress={() => setFeedbackDropdownOpen((prev) => !prev)}
-                >
-                  <Text style={styles.selectBoxText}>{t(selectedDeleteFeedback)}</Text>
-                  <MaterialIcons
-                    name={feedbackDropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-                    size={20}
-                    color={colors.textSubtle}
-                  />
-                </TouchableOpacity>
-                {feedbackDropdownOpen ? (
-                  <View style={styles.dropdownMenu}>
-                    {deleteFeedbackOptions.map((option) => (
-                      <TouchableOpacity
-                        key={option}
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          setSelectedDeleteFeedback(option);
-                          setFeedbackDropdownOpen(false);
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>{t(option)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-                <TextInput
-                  style={styles.feedbackInput}
-                  value={customDeleteFeedback}
-                  onChangeText={setCustomDeleteFeedback}
-                  placeholder={t('feedbackPlaceholder')}
-                  placeholderTextColor={colors.textSubtle}
-                  
-                />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={[styles.modalBtn, styles.modalCancel]} onPress={() => setConfirmVisible(false)}>
-                    <Text style={styles.modalCancelText}>{t('noLabel')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalBtn, styles.modalConfirm]} onPress={handleDelete} disabled={deleting}>
-                    <Text style={styles.modalConfirmText}>{t('yesLabel')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </DrawerContentScrollView>
+
+    {/* Outside the scroll view: nested in the 300px drawer panel the dialog
+        laid out against that width and overflowed the screen. */}
+      <ConfirmDialog
+        visible={logoutConfirmVisible}
+        onRequestClose={() => setLogoutConfirmVisible(false)}
+        icon="log-out-outline"
+        title={t('confirmTitle')}
+        description={t('logoutConfirmDesc')}
+        cancelLabel={t('noLabel')}
+        confirmLabel={t('yesLabel')}
+        onCancel={() => setLogoutConfirmVisible(false)}
+        onConfirm={() => {
+          setLogoutConfirmVisible(false);
+          signOutHandler();
+        }}
+      />
+      <ConfirmDialog
+        visible={confirmVisible}
+        onRequestClose={() => setConfirmVisible(false)}
+        icon="trash-outline"
+        tone="danger"
+        scrollable
+        title={t('confirmTitle')}
+        description={t('deleteAccountConfirmDesc')}
+        cancelLabel={t('noLabel')}
+        confirmLabel={t('yesLabel')}
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={handleDelete}
+        confirmLoading={deleting}
+      >
+        <Text style={styles.inputLabel}>{t('deleteReasonLabel')}</Text>
+        <TouchableOpacity
+          style={styles.selectBox}
+          activeOpacity={0.8}
+          onPress={() => setFeedbackDropdownOpen((prev) => !prev)}
+        >
+          <Text style={styles.selectBoxText}>{t(selectedDeleteFeedback)}</Text>
+          <MaterialIcons
+            name={feedbackDropdownOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+            size={20}
+            color={colors.textSubtle}
+          />
+        </TouchableOpacity>
+        {feedbackDropdownOpen ? (
+          <View style={styles.dropdownMenu}>
+            {deleteFeedbackOptions.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.dropdownItem}
+                onPress={() => {
+                  setSelectedDeleteFeedback(option);
+                  setFeedbackDropdownOpen(false);
+                }}
+              >
+                <Text style={styles.dropdownItemText}>{t(option)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+        <TextInput
+          style={styles.feedbackInput}
+          value={customDeleteFeedback}
+          onChangeText={setCustomDeleteFeedback}
+          placeholder={t('feedbackPlaceholder')}
+          placeholderTextColor={colors.textSubtle}
+        />
+      </ConfirmDialog>
+    </>
   );
 }
 
@@ -580,44 +562,6 @@ const makeStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     marginBottom: 8,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalKeyboardAvoiding: {
-    flex: 1,
-  },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingVertical: 24,
-  },
-  modalCard: {
-    width: '80%',
-    backgroundColor: colors.elevated,
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
-    borderRadius: radius.md,
-    padding: 18,
-    marginHorizontal: 32,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  modalDesc: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   inputLabel: {
     color: colors.text,
     fontWeight: '600',
@@ -670,31 +614,5 @@ const makeStyles = (colors) => StyleSheet.create({
     color: colors.text,
     textAlignVertical: 'top',
     marginBottom: 16,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  modalBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: radius.sm,
-    marginLeft: 12,
-  },
-  modalCancel: {
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
-    backgroundColor: colors.surface,
-  },
-  modalConfirm: {
-    backgroundColor: colors.primarySolid,
-  },
-  modalCancelText: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  modalConfirmText: {
-    color: colors.onPrimary,
-    fontWeight: '800',
   },
 });

@@ -4,7 +4,7 @@ export interface IndianCity {
   type: 'Metropolitan' | 'Capital' | 'Major' | 'Regional'
   population?: string
 }
- 
+
 export const INDIAN_CITIES: IndianCity[] = [
   // Metropolitan Cities
   { name: 'Mumbai', state: 'Maharashtra', type: 'Metropolitan', population: '20.4M' },

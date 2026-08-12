@@ -28,6 +28,7 @@ const ThemeContext = createContext({
   mode: 'light',
   colors: getColors('light'),
   isDark: false,
+  ready: true,
   toggleTheme: () => {},
   setMode: () => {},
 });
@@ -79,15 +80,26 @@ export function ThemeProvider({ children }) {
       mode,
       colors: getColors(mode),
       isDark: mode !== 'light',
+      ready,
       toggleTheme,
       setMode,
     }),
-    [mode, toggleTheme, setMode]
+    [mode, ready, toggleTheme, setMode]
   );
 
-  // Gate first paint until the stored theme is known (prevents flash).
-  if (!ready) return null;
-
+  // Children are ALWAYS rendered.
+  //
+  // This used to `return null` until the stored theme had been read, to avoid a
+  // theme flash. But this provider sits above the root layout's navigator, so
+  // returning null meant app/_layout.js rendered no navigator on its first
+  // frame — and Expo Router then mounts the screens outside the layout tree.
+  // Every context provided at the root was silently cut off from the screens:
+  // the theme toggle did nothing, t() returned raw key names, and useChatTimer()
+  // came back undefined.
+  //
+  // A one-frame theme flash is the far smaller problem. `ready` is exposed on
+  // the context so a screen that genuinely needs to defer its own paint can,
+  // without unmounting the navigator.
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

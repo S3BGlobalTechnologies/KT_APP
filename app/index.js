@@ -65,7 +65,7 @@ export default function Index() {
         setShowSplash(true);
         const base = process.env.EXPO_PUBLIC_API_BASE_URL;
         if (!base) {
-          await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE']);
+          await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE', 'MIND_ANALYSIS_LAST_RUN_AT']);
           setShowSplash(false); setAuthChecked(true); return;
         }
         const res = await fetch(`${base}/user-info`, {
@@ -77,7 +77,7 @@ export default function Index() {
         let json = null;
         try { json = JSON.parse(raw); } catch { json = null; }
         if (!res.ok || !json || typeof json !== 'object') {
-          await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE']);
+          await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE', 'MIND_ANALYSIS_LAST_RUN_AT']);
           setShowSplash(false); setAuthChecked(true); return;
         }
         const user = json?.data;
@@ -95,7 +95,7 @@ export default function Index() {
         }, 1500);
       } catch (e) {
         console.log('Auth check failed', e);
-        await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE']);
+        await AsyncStorage.multiRemove(['AUTH_TOKEN', 'USER_PROFILE', 'MIND_ANALYSIS_LAST_RUN_AT']);
         setShowSplash(false); setAuthChecked(true);
       }
     })();
@@ -173,7 +173,8 @@ export default function Index() {
         await AsyncStorage.setItem('FREE_CHAT_ACTIVE', 'true');
         await AsyncStorage.setItem('FIRST_TIME_USER', 'true');
         await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'true');
-        nextRoute = '/profile';
+        // New signup: language -> birth details -> free reading -> chat.
+        nextRoute = '/onboarding';
       } else if (json?.data?.token) {
         token = json.data.token;
         await AsyncStorage.setItem('FIRST_TIME_USER', 'false');

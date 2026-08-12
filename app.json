@@ -30,6 +30,7 @@
           }
         ]
       },
+
       "infoPlist": {
         "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
         "SKAdNetworkItems": [
@@ -76,19 +77,14 @@
     "plugins": [
       "expo-router",
       "react-native-iap",
+
       [
         "expo-build-properties",
         {
           "ios": {
             "extraPods": [
-              {
-                "name": "FirebaseABTesting",
-                "modular_headers": true
-              },
-              {
-                "name": "GoogleUtilities",
-                "modular_headers": true
-              }
+              { "name": "FirebaseABTesting", "modular_headers": true },
+              { "name": "GoogleUtilities", "modular_headers": true }
             ]
           }
         }
@@ -136,9 +132,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "41948d9f-26ff-4e3d-b9c3-2464af715b20"
+        "projectId": "fe8959b6-a2f4-4edd-947f-e64c0b41e52b"
       }
     },
-    "owner": "abhis002"
+    "owner": "kundli_time_app"
   }
 }

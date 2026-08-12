@@ -22,9 +22,9 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { ThemedView } from '@/components/themed-view';
 import AscendantInfo from '@/components/ui/ascendant-info';
 import AstrologerStatusIndicator from '@/components/ui/AstrologerSelector';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import DynamicQuestions from '@/components/ui/dynamic-questions';
 import FeedbackPopup from '@/components/ui/FeedbackPopup';
-import FreeChatTimePopup from '@/components/ui/FreeChatTimePopup';
 import PaymentPage from '@/components/ui/PaymentPage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
@@ -34,15 +34,9 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing } from 'react-native';
 
-
-
-
-
 export default function Chat() {
   const { t, language } = useLanguage();
-  const FREE_QUESTION_NOTICE_ID = 'free-question-notice';
-  const FREE_QUESTION_NOTICE_ELIGIBLE_KEY = 'FREE_QUESTION_NOTICE_ELIGIBLE';
-  
+
   const RESUME_CHAT_KEY = 'RESUME_CHAT_PAYLOAD';
   // Rotating loading messages while analyzer is visible
   const loadingMessages = useMemo(
@@ -381,10 +375,6 @@ export default function Chat() {
   const resetChatToInitial = async () => {
     const rawProfile = await AsyncStorage.getItem('USER_PROFILE');
     const profile = rawProfile ? JSON.parse(rawProfile) : {};
-    const showFirstTimeNotice =
-      (await AsyncStorage.getItem(FREE_QUESTION_NOTICE_ELIGIBLE_KEY)) === 'true';
-    const freeChatGranted =
-      (await AsyncStorage.getItem('FREE_CHAT_GRANTED')) === 'true';
     setProfileData(profile);
     setSelectedLanguage(profile.language || 'English');
     setFirstMessageSent(false); // Reset this for new session
@@ -411,15 +401,6 @@ export default function Chat() {
         text: t('guideMessage'),
       },
     ];
-
-    if (showFirstTimeNotice && freeChatGranted) {
-      nextMessages.push({
-        id: FREE_QUESTION_NOTICE_ID,
-        from: 'astro',
-        type: 'free-question-notice',
-        text: t('freeQuestionUnlockedToday'),
-      });
-    }
 
     setMessages(nextMessages);
   };
@@ -586,9 +567,6 @@ export default function Chat() {
       setSessionId(String(payload.sessionId));
       setFirstMessageSent(historyMessages.some((item) => item.from === 'user'));
       setMessages(historyMessages);
-      setChatLocked(false);
-      setShowFreeChatPopup(false);
-      setFreeChatGranted(false);
       await AsyncStorage.setItem('CHAT_SESSION_ID', String(payload.sessionId));
       await AsyncStorage.removeItem(RESUME_CHAT_KEY);
       return true;
@@ -598,34 +576,6 @@ export default function Chat() {
       return false;
     }
   }, [mapHistoryMessageToChatMessage, resumeSessionIdParam]);
-
-  const upsertFreeQuestionNotice = useCallback((visible) => {
-    setMessages((prev) => {
-      const withoutNotice = prev.filter((msg) => msg.id !== FREE_QUESTION_NOTICE_ID);
-
-      if (!visible) {
-        return withoutNotice;
-      }
-
-      const noticeMessage = {
-        id: FREE_QUESTION_NOTICE_ID,
-        from: 'astro',
-        type: 'free-question-notice',
-        text: t('freeQuestionUnlockedToday'),
-      };
-      const guideIndex = withoutNotice.findIndex((msg) => msg.id === 'dummy-astro');
-
-      if (guideIndex === -1) {
-        return [...withoutNotice, noticeMessage];
-      }
-
-      return [
-        ...withoutNotice.slice(0, guideIndex + 1),
-        noticeMessage,
-        ...withoutNotice.slice(guideIndex + 1),
-      ];
-    });
-  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -749,165 +699,21 @@ export default function Chat() {
   const [chatSessionStarted, setChatSessionStarted] = useState(false);
   const [firstMessageSent, setFirstMessageSent] = useState(false);
   const [paidPendingStart, setPaidPendingStart] = useState(false);
-  const [showFreeChatPopup, setShowFreeChatPopup] = useState(false);
-  const [freeChatGranted, setFreeChatGranted] = useState(false);
   const [questionTrigger, setQuestionTrigger] = useState(0);
   const timerRef = useRef(null);
   const inputRef = useRef(null);
   const sendLockRef = useRef(false);
   const PAID_SECONDS = 5 * 60;           // 5 minutes
   const CHAT_TYPE = {
-    FREE: 'FREE',
     PAID: 'PAID',
   };
   const STORAGE_KEYS = {
-    FREE_ACTIVE: 'FREE_CHAT_ACTIVE',
     CHAT_START: 'CHAT_START_TIME',
     CHAT_DURATION: 'CHAT_DURATION',
     CHAT_TYPE: 'CHAT_TYPE', // ✅ NEW
     CHAT_REMAINING: 'CHAT_REMAINING_SECONDS', // ✅ NEW
     PAID_PENDING: 'PAID_PENDING_START',
   };
-
-  const grantFreeQuestionAccess = useCallback(async ({ showPopup = false, showFirstTimeMessage = false } = {}) => {
-    console.log('FREE_QUESTION_STATUS:', {
-      eligible: true,
-      granted: true,
-      showPopup,
-      showFirstTimeMessage,
-    });
-    setFreeChatGranted(true);
-    setChatLocked(false);
-    setChatSessionStarted(false);
-    setShowFreeChatPopup(showPopup);
-    setRemainingSeconds(0);
-    upsertFreeQuestionNotice(showFirstTimeMessage);
-    await AsyncStorage.setItem(STORAGE_KEYS.FREE_ACTIVE, 'true');
-    await AsyncStorage.setItem('FREE_CHAT_GRANTED', 'true');
-  }, [upsertFreeQuestionNotice]);
-
-  const denyFreeQuestionAccess = useCallback(async () => {
-    console.log('FREE_QUESTION_STATUS:', {
-      eligible: false,
-      granted: false,
-      reason: 'denied',
-    });
-    setFreeChatGranted(false);
-    setChatLocked(true);
-    setChatSessionStarted(false);
-    setShowFreeChatPopup(false);
-    setRemainingSeconds(0);
-    upsertFreeQuestionNotice(false);
-    await AsyncStorage.removeItem('FREE_CHAT_GRANTED');
-  }, [upsertFreeQuestionNotice]);
-
-  const canGrantFreeQuestion = useCallback(async () => {
-    try {
-      const token = await AsyncStorage.getItem('AUTH_TOKEN');
-      if (!token) {
-        console.log('FREE_QUESTION_ELIGIBILITY:', {
-          eligible: false,
-          reason: 'missing-token',
-        });
-        return false;
-      }
-
-      const deletedSessionRes = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/kundlikonnect/check-deleted-account-session`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          token,
-        },
-      });
-
-      if (!deletedSessionRes.ok) {
-        console.log('FREE_QUESTION_ELIGIBILITY:', {
-          eligible: false,
-          reason: 'eligibility-api-failed',
-          status: deletedSessionRes.status,
-        });
-        return false;
-      }
-
-      const deletedSessionJson = await deletedSessionRes.json();
-      const deletedSessionWrapper = Array.isArray(deletedSessionJson)
-        ? deletedSessionJson[0]
-        : deletedSessionJson;
-
-      const resultList = Array.isArray(deletedSessionWrapper?.result)
-        ? deletedSessionWrapper.result
-        : null;
-      const deletedSession =
-        resultList && resultList.length > 0
-          ? resultList[0]
-          : deletedSessionWrapper;
-
-      // No deleted-account session record means this is effectively a fresh user.
-      if (resultList && resultList.length === 0) {
-        console.log('FREE_QUESTION_ELIGIBILITY:', {
-          eligible: true,
-          reason: 'no-deleted-session-record',
-        });
-        return true;
-      }
-
-      const freeChatAvailable =
-        typeof deletedSession?.freeChatAvailable === 'boolean'
-          ? deletedSession.freeChatAvailable
-          : typeof deletedSessionWrapper?.freeChatAvailable === 'boolean'
-            ? deletedSessionWrapper.freeChatAvailable
-            : undefined;
-
-      console.log('FREE_QUESTION_ELIGIBILITY:', {
-        eligible: freeChatAvailable === true,
-        freeChatAvailable,
-      });
-
-      return freeChatAvailable === true;
-    } catch (error) {
-      console.warn('check-deleted-account-session error', error);
-      console.log('FREE_QUESTION_ELIGIBILITY:', {
-        eligible: false,
-        reason: 'exception',
-      });
-      return false;
-    }
-  }, []);
-
-  const consumeFreeQuestion = useCallback(async () => {
-    console.log('FREE_QUESTION_CONSUMED:', {
-      removeNoticeEligible: true,
-    });
-    setFreeChatGranted(false);
-    setChatLocked(true);
-    setChatSessionStarted(false);
-    setShowFreeChatPopup(false);
-    setRemainingSeconds(0);
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.FREE_ACTIVE,
-      'FREE_CHAT_GRANTED',
-      FREE_QUESTION_NOTICE_ELIGIBLE_KEY,
-      STORAGE_KEYS.CHAT_START,
-      STORAGE_KEYS.CHAT_DURATION,
-      STORAGE_KEYS.CHAT_TYPE,
-      STORAGE_KEYS.CHAT_REMAINING,
-    ]);
-    await AsyncStorage.setItem('FIRST_TIME_USER', 'false');
-  }, []);
-
-  const clearFreeQuestionState = useCallback(async () => {
-    console.log('FREE_QUESTION_CLEAR_STATE:', {
-      removeNoticeEligible: false,
-    });
-    setFreeChatGranted(false);
-    setShowFreeChatPopup(false);
-    upsertFreeQuestionNotice(false);
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.FREE_ACTIVE,
-      'FREE_CHAT_GRANTED',
-    ]);
-    await AsyncStorage.setItem('FIRST_TIME_USER', 'false');
-  }, [upsertFreeQuestionNotice]);
 
   useFocusEffect(
     useCallback(() => {
@@ -993,15 +799,11 @@ export default function Chat() {
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.CHAT_START,
       STORAGE_KEYS.CHAT_DURATION,
-      STORAGE_KEYS.FREE_ACTIVE,
       STORAGE_KEYS.CHAT_TYPE, // ✅ NEW
-      'FREE_CHAT_GRANTED',
       STORAGE_KEYS.PAID_PENDING,
       'CHAT_SESSION_ID', // ✅ Clear session ID on expiry
     ]);
 
-
-    await checkLastSession();
     await checkFeedbackStatus();
   };
 
@@ -1074,7 +876,6 @@ export default function Chat() {
   useFocusEffect(
     useCallback(() => {
       restoreTimerIfExists();
-      checkLastSession();
       return () => {
         if (timerRef.current) {
           clearInterval(timerRef.current);
@@ -1084,151 +885,6 @@ export default function Chat() {
     }, [])
   );
 
-  const getLastSessionFreeChatAvailable = useCallback(async () => {
-    const token = await AsyncStorage.getItem('AUTH_TOKEN');
-    if (!token) {
-      console.log('CHECK_LAST_SESSION:', {
-        freeChatAvailable: false,
-        reason: 'missing-token',
-      });
-      return false;
-    }
-
-    const res = await fetch(
-      `${process.env.EXPO_PUBLIC_API_BASE_URL}/kundlikonnect/check-last-session`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          token,
-        },
-      }
-    );
-
-    const json = await res.json();
-    const sessionWrapper = Array.isArray(json) ? json[0] : json;
-    const resultList = Array.isArray(sessionWrapper?.result)
-      ? sessionWrapper.result
-      : null;
-    const session =
-      resultList && resultList.length > 0
-        ? resultList[0]
-        : sessionWrapper;
-    const freeChatAvailable =
-      typeof session?.freeChatAvailable === 'boolean'
-        ? session.freeChatAvailable
-        : typeof sessionWrapper?.freeChatAvailable === 'boolean'
-          ? sessionWrapper.freeChatAvailable
-          : undefined;
-
-    console.log('CHECK_LAST_SESSION:', {
-      freeChatAvailable,
-      sessionId: session?.sessionId,
-      hasWrappedResult: Array.isArray(resultList),
-    });
-
-    return freeChatAvailable === true;
-  }, []);
-
-  const checkFirstTimeFreeChat = async () => {
-    await checkLastSession();
-  };
-
-  const checkLastSession = async () => {
-    try {
-      // If a timer is already active (FREE or PAID) and there is remaining time, do not override lock state
-      const activeTypeExisting = await AsyncStorage.getItem(STORAGE_KEYS.CHAT_TYPE);
-      const remainingStr = await AsyncStorage.getItem(STORAGE_KEYS.CHAT_REMAINING);
-      const remainingVal = parseInt(remainingStr || '0', 10);
-      if (activeTypeExisting && remainingVal > 0) {
-        setChatLocked(false);
-        upsertFreeQuestionNotice(false);
-        return;
-      }
-
-      const paidPendingStored =
-        (await AsyncStorage.getItem(STORAGE_KEYS.PAID_PENDING)) === 'true';
-      if (paidPendingStored) {
-        setPaidPendingStart(true);
-        setRemainingSeconds(PAID_SECONDS);
-        setChatLocked(false);
-        setChatSessionStarted(false);
-        upsertFreeQuestionNotice(false);
-        console.log('FREE_QUESTION_GATE:', {
-          flow: 'paid-pending-restore',
-          paidPendingStored,
-        });
-        return;
-      }
-
-      const localFreeActive = await AsyncStorage.getItem(STORAGE_KEYS.FREE_ACTIVE);
-      const showFirstTimeNotice =
-        (await AsyncStorage.getItem(FREE_QUESTION_NOTICE_ELIGIBLE_KEY)) === 'true';
-      const isFirstTimeUser =
-        (await AsyncStorage.getItem('FIRST_TIME_USER')) === 'true';
-
-      const deletedSessionAllowed = await canGrantFreeQuestion();
-      const firstTimeCandidate =
-        showFirstTimeNotice ||
-        localFreeActive === 'true' ||
-        isFirstTimeUser;
-
-      if (firstTimeCandidate) {
-        console.log('FREE_QUESTION_GATE:', {
-          flow: 'first-time-or-notice',
-          deletedSessionAllowed,
-          localFreeActive,
-          showFirstTimeNotice,
-          isFirstTimeUser,
-        });
-
-        if (deletedSessionAllowed) {
-          await grantFreeQuestionAccess({
-            showPopup: false,
-            showFirstTimeMessage: showFirstTimeNotice,
-          });
-        } else {
-          await denyFreeQuestionAccess();
-        }
-        return;
-      }
-
-      const lastSessionAllowed = await getLastSessionFreeChatAvailable();
-
-      // 🔐 CHECK IF A TIMER IS ALREADY RUNNING
-      const activeType = await AsyncStorage.getItem(STORAGE_KEYS.CHAT_TYPE);
-
-      if (activeType) {
-        // Any active session (FREE or PAID) → don't change lock state based on server
-        return;
-      }
-
-      console.log('FREE_QUESTION_GATE:', {
-        flow: 'existing-user',
-        deletedSessionAllowed,
-        lastSessionAllowed,
-        localFreeActive,
-        showFirstTimeNotice,
-        isFirstTimeUser,
-      });
-
-      if (deletedSessionAllowed && lastSessionAllowed) {
-        await grantFreeQuestionAccess({
-          showPopup:
-            !showFirstTimeNotice &&
-            localFreeActive !== 'true' &&
-            isFirstTimeUser !== true,
-          showFirstTimeMessage: showFirstTimeNotice,
-        });
-      } else {
-        await denyFreeQuestionAccess();
-      }
-
-    } catch (e) {
-      console.warn('check-last-session error', e);
-      await denyFreeQuestionAccess();
-    }
-  };
   const checkFeedbackStatus = async () => {
     try {
       const token = await AsyncStorage.getItem('AUTH_TOKEN');
@@ -1266,8 +922,6 @@ export default function Chat() {
 
 
   useEffect(() => {
-    checkFirstTimeFreeChat();
-
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -1403,8 +1057,6 @@ export default function Chat() {
         await AsyncStorage.removeItem(STORAGE_KEYS.PAID_PENDING);
         await startChatTimer(PAID_SECONDS, CHAT_TYPE.PAID);
         setFirstMessageSent(true);
-      } else if (freeChatGranted && !paidPendingStart) {
-        await consumeFreeQuestion();
       }
 
     } catch (e) {
@@ -1498,7 +1150,6 @@ export default function Chat() {
 
     onPaymentSuccess: async () => {
       setShowPaymentPage(false);
-      await clearFreeQuestionState();
       const storedSessionId = await AsyncStorage.getItem('CHAT_SESSION_ID');
       const finalSessionId = sessionId ? String(sessionId) : storedSessionId;
       if (finalSessionId) {
@@ -1547,16 +1198,7 @@ export default function Chat() {
     const paidPendingStored =
       (await AsyncStorage.getItem(STORAGE_KEYS.PAID_PENDING)) === 'true';
     if ((!storedRemaining || Number(storedRemaining) <= 0) && !paidPendingStored) {
-      await AsyncStorage.multiRemove([
-        STORAGE_KEYS.FREE_ACTIVE,
-        'FREE_CHAT_GRANTED',
-        'CHAT_SESSION_ID',
-      ]);
-    } else {
-      await AsyncStorage.multiRemove([
-        STORAGE_KEYS.FREE_ACTIVE,
-        'FREE_CHAT_GRANTED',
-      ]);
+      await AsyncStorage.removeItem('CHAT_SESSION_ID');
     }
     router.push('/home');
   };
@@ -1570,13 +1212,6 @@ export default function Chat() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: chatTheme.screenBg }]}>
-      {showFreeChatPopup && (
-        <FreeChatTimePopup
-          visible={showFreeChatPopup}
-          onClose={() => setShowFreeChatPopup(false)}
-        />
-      )}
-
       {chatLocked && showFeedbackPopup && (
         <FeedbackPopup
           visible={showFeedbackPopup}
@@ -1792,16 +1427,6 @@ export default function Chat() {
                 ) : m.type === 'payment-success' ? (
                   <View style={[styles.bubble, styles.paymentSuccessBubble]}>
                     <Text style={[styles.bubbleText, { color: '#fff', fontWeight: 'bold' }]}>{m.text}</Text>
-                  </View>
-                ) : m.type === 'free-question-notice' ? (
-                  <View
-                    style={[
-                      styles.bubble,
-                      styles.freeQuestionNoticeBubble,
-                      { backgroundColor: chatTheme.noticeBg, borderColor: chatTheme.noticeBorder },
-                    ]}
-                  >
-                    <Text style={[styles.freeQuestionNoticeText, { color: chatTheme.noticeText }]}>{m.text}</Text>
                   </View>
                 ) : m.from === 'analyzer' ? (
                   <Animated.View
@@ -2071,27 +1696,17 @@ language={
         <Text style={styles.bottomBlueText}> </Text>
       </TouchableOpacity>
 
-      <Modal
+      <ConfirmDialog
         visible={showBackModal}
-        transparent
-        animationType="fade"
         onRequestClose={() => setShowBackModal(false)}
-      >
-        <View style={styles.backModalOverlay}>
-          <View style={[styles.backModalBox, { backgroundColor: chatTheme.modalBg }]}>
-            <Text style={[styles.backModalTitle, { color: chatTheme.modalText }]}>{t('goBackTitle')}</Text>
-            <Text style={[styles.backModalDesc, { color: chatTheme.modalSubText }]}>{t('goBackDesc')}</Text>
-            <View style={styles.backModalBtnRow}>
-              <TouchableOpacity style={styles.backModalBtnBlue} onPress={handleBackConfirm}>
-                <Text style={styles.backModalBtnBlueText}>{t('yesGoBack')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.backModalBtnGray} onPress={() => setShowBackModal(false)}>
-                <Text style={styles.backModalBtnGrayText}>{t('cancel')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        icon="home-outline"
+        title={t('goBackTitle')}
+        description={t('goBackDesc')}
+        cancelLabel={t('cancel')}
+        confirmLabel={t('yesGoBack')}
+        onCancel={() => setShowBackModal(false)}
+        onConfirm={handleBackConfirm}
+      />
     </ThemedView>
   );
 }
@@ -2150,15 +1765,6 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 6 },
   onlineText: { color: '#C6F6D5', fontSize: 12 },
   paymentSuccessBubble: { backgroundColor: '#10B981', borderWidth: 1, borderColor: '#059669' },
-  freeQuestionNoticeBubble: {
-    backgroundColor: '#FFF7DB',
-    borderWidth: 1,
-    borderColor: '#E4AD0D',
-  },
-  freeQuestionNoticeText: {
-    color: '#7C5A00',
-    fontWeight: '600',
-  },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
   timerPill: { backgroundColor: '#073A8C', borderWidth: 1, borderColor: '#FFC000', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   timerText: { color: '#FFC000', fontWeight: '700' },
@@ -2255,68 +1861,4 @@ const styles = StyleSheet.create({
   successDesc: { fontSize: 14, color: '#334155', marginBottom: 16, textAlign: 'center' },
   successBtn: { backgroundColor: '#073A8C', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20 },
   successBtnText: { color: '#fff', fontWeight: '700' },
-  backModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backModalBox: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: 350,
-    maxWidth: '90%',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  backModalTitle: {
-    fontWeight: 'bold',
-    fontSize: 18,
-    marginBottom: 10,
-    color: '#222',
-    textAlign: 'center',
-  },
-  backModalDesc: {
-    color: '#7A869A',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  backModalBtnRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  backModalBtnGray: {
-    backgroundColor: '#073a8c',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    marginRight: 8,
-  
-    alignItems: 'center',
-  },
-  backModalBtnGrayText: {
-    color: '#fff',
-    fontWeight: 600,
-    fontSize: 15,
-  },
-  backModalBtnBlue: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    minWidth: 110,
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  backModalBtnBlueText: {
-    color: '#1E293B',
-    fontWeight: 600,
-    fontSize: 15,
-  },
 });
