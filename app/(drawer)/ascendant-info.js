@@ -21,6 +21,18 @@ const { t, language } = useLanguage();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // DivineAPI uses non-standard codes for some languages
+  const DIVINE_API_LANGUAGE_MAP = {
+    mr: 'ma',   // Marathi
+    ta: 'tm',   // Tamil
+    te: 'tl',   // Telugu
+  };
+
+  const getApiLanguage = (lang) => {
+    if (lang === 'gu') return 'en'; // Gujarati unsupported — fallback to English
+    return DIVINE_API_LANGUAGE_MAP[lang] || lang || '';
+  };
+
   const mapProfileToApi = (p) => ({
     city: p?.city || '',
     country: p?.country || '',
@@ -33,7 +45,7 @@ const { t, language } = useLanguage();
     sec: String(p?.sec ?? 0),
     state: p?.state || '',
     year: p?.year ? String(p.year) : '',
-    language: language || '',
+    language: getApiLanguage(language),
   });
 
   const fetchInfo = async () => {
@@ -50,6 +62,8 @@ const { t, language } = useLanguage();
       const url = `${base}/ascendant`;
       const payload = { ...mapProfileToApi(profile), token: token || null };
 
+      console.log('=== ASCENDANT PAYLOAD SENT ===', JSON.stringify(payload));
+
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', token: token || '', Authorization: token ? `Bearer ${token}` : '' },
@@ -57,6 +71,9 @@ const { t, language } = useLanguage();
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json().catch(() => ({}));
+
+      console.log('=== ASCENDANT RESPONSE ===', JSON.stringify(json));
+
       setData(json);
     } catch (e) {
       setError(e?.message || 'Failed to load ascendant info');

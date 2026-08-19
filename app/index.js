@@ -23,7 +23,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
- * Root route hosts the entire starting flow: phone -> otp -> success.
+ * Root route hosts the entire starting flow: identifier (phone or email) -> otp -> success.
  */
 export default function Index() {
   const [step, setStep] = useState('phone'); // 'phone' | 'otp' | 'success'
@@ -33,7 +33,7 @@ export default function Index() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showSplash, setShowSplash] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState(''); // phone ya email, jo bhi user daale
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
@@ -108,37 +108,106 @@ export default function Index() {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  const phoneFull = phone;
   const isValidPhone = (num) => /^[6-9]\d{9}$/.test(num);
+  const isValidEmail = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 
-  const startOtp = () => {
-    if (!phone || !isValidPhone(phone)) {
-      setApiError('Enter a valid 10-digit Indian phone number starting with 6, 7, 8, or 9');
+  // Kya user ne phone daala ya email, khud pehchano
+  const detectMethod = (val) => {
+    const trimmed = val.trim();
+    if (/^\d+$/.test(trimmed)) return 'phone'; // sirf digits hain
+    if (trimmed.includes('@')) return 'email';
+    return null; // abhi tak pata nahi chal raha (user type kar raha hai)
+  };
+
+
+  const autoOtpLock = useRef(false);
+  const handleIdentifierChange = (val) => {
+    setIdentifier(val);
+    if (apiError) setApiError('');
+
+    const trimmed = val.trim();
+
+    // 10 digit ka valid Indian phone number complete hote hi auto-trigger
+    if (/^\d{10}$/.test(trimmed) && isValidPhone(trimmed)) {
+      if (!autoOtpLock.current) {
+        autoOtpLock.current = true;
+        Keyboard.dismiss();
+        startOtp(trimmed);
+      }
+    } else {
+      autoOtpLock.current = false; // agar digit delete kiya toh dobara trigger ho sake
+    }
+  };
+
+
+  const startOtp = (overrideValue) => {
+    const trimmed = (overrideValue ?? identifier).trim();
+    const method = detectMethod(trimmed);
+
+    if (method === 'phone') {
+      if (!isValidPhone(trimmed)) {
+        setApiError('Enter a valid 10-digit Indian phone number starting with 6, 7, 8, or 9');
+        return;
+      }
+    } else if (method === 'email') {
+      if (!isValidEmail(trimmed)) {
+        setApiError('Enter a valid email address');
+        return;
+      }
+    } else {
+      setApiError('Enter a valid phone number or email address');
       return;
     }
+
     setApiError('');
     setLoadingSendOtp(true);
-    fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/send-otp`, {
+
+    if (method === 'phone') {
+      fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: trimmed }),
+      })
+        .then(async (res) => {
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) { setApiError(json?.message || 'Failed to send OTP'); return; }
+          let otpId = null;
+          if (Array.isArray(json) && json.length > 0 && json[0]?.Details) otpId = json[0].Details;
+          else if (json && typeof json === 'object' && json?.Details) otpId = json.Details;
+          if (!otpId) throw new Error('OTP ID not found in response');
+          await AsyncStorage.setItem('details', otpId);
+          if (json?.otp) setGeneratedOtp(String(json.otp));
+          else setGeneratedOtp(String(Math.floor(1000 + Math.random() * 9000)));
+          setD1(''); setD2(''); setD3(''); setD4(''); setD5(''); setD6('');
+          setTimer(60);
+          setStep('otp');
+        })
+        .catch((err) => {
+          console.log('Send OTP Error:', err.message);
+          setApiError('Network error while sending OTP');
+        })
+        .finally(() => setLoadingSendOtp(false));
+      return;
+    }
+
+    // method === 'email' (n8n webhook)
+    fetch(process.env.EXPO_PUBLIC_EMAIL_AUTH_SEND_OTP_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phoneFull }),
+      body: JSON.stringify({ email: trimmed.toLowerCase() }),
     })
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) { setApiError(json?.message || 'Failed to send OTP'); return; }
-        let otpId = null;
-        if (Array.isArray(json) && json.length > 0 && json[0]?.Details) otpId = json[0].Details;
-        else if (json && typeof json === 'object' && json?.Details) otpId = json.Details;
-        if (!otpId) throw new Error('OTP ID not found in response');
-        await AsyncStorage.setItem('details', otpId);
-        if (json?.otp) setGeneratedOtp(String(json.otp));
-        else setGeneratedOtp(String(Math.floor(1000 + Math.random() * 9000)));
+        if (!res.ok || json?.success === false) {
+          setApiError(json?.message || 'Failed to send OTP');
+          return;
+        }
         setD1(''); setD2(''); setD3(''); setD4(''); setD5(''); setD6('');
         setTimer(60);
         setStep('otp');
       })
       .catch((err) => {
-        console.log('Send OTP Error:', err.message);
+        console.log('Send Email OTP Error:', err.message);
         setApiError('Network error while sending OTP');
       })
       .finally(() => setLoadingSendOtp(false));
@@ -156,38 +225,73 @@ export default function Index() {
       return;
     }
     setLoadingVerifyOtp(true);
+    const trimmed = identifier.trim();
+    const method = detectMethod(trimmed);
     try {
-      const storedOtpId = await AsyncStorage.getItem('details');
-      const res = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneFull, otp: entered, id: storedOtpId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || 'OTP failed');
-      let token = null;
-      let nextRoute = null;
-      if (json?.token) {
-        token = json.token;
-        await AsyncStorage.setItem('Restore_free_chat', 'true');
-        await AsyncStorage.setItem('FREE_CHAT_ACTIVE', 'true');
-        await AsyncStorage.setItem('FIRST_TIME_USER', 'true');
-        await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'true');
-        // New signup: language -> birth details -> free reading -> chat.
-        nextRoute = '/onboarding';
-      } else if (json?.data?.token) {
-        token = json.data.token;
-        await AsyncStorage.setItem('FIRST_TIME_USER', 'false');
-        await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'false');
-        nextRoute = '/home';
+      if (method === 'phone') {
+        const storedOtpId = await AsyncStorage.getItem('details');
+        const res = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: trimmed, otp: entered, id: storedOtpId }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.message || 'OTP failed');
+
+        let token = null;
+        let nextRoute = null;
+        if (json?.token) {
+          token = json.token;
+          await AsyncStorage.setItem('Restore_free_chat', 'true');
+          await AsyncStorage.setItem('FREE_CHAT_ACTIVE', 'true');
+          await AsyncStorage.setItem('FIRST_TIME_USER', 'true');
+          await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'true');
+          nextRoute = '/onboarding';
+        } else if (json?.data?.token) {
+          token = json.data.token;
+          await AsyncStorage.setItem('FIRST_TIME_USER', 'false');
+          await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'false');
+          nextRoute = '/home';
+        }
+        if (!token || !nextRoute) throw new Error('Invalid login response');
+
+        await AsyncStorage.setItem('AUTH_TOKEN', token);
+        await AsyncStorage.removeItem('details');
+        logMetaEvent('fb_mobile_login');
+        setRedirectTo(nextRoute);
+      } else if (method === 'email') {
+        const res = await fetch(process.env.EXPO_PUBLIC_EMAIL_AUTH_VERIFY_OTP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmed.toLowerCase(), otp: entered }),
+        });
+        const json = await res.json();
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.message || 'OTP failed');
+        }
+
+        const token = json?.token;
+        const isNewUser = !!json?.data?.isNewUser;
+        if (!token) throw new Error('Invalid login response');
+
+        if (isNewUser) {
+          await AsyncStorage.setItem('Restore_free_chat', 'true');
+          await AsyncStorage.setItem('FREE_CHAT_ACTIVE', 'true');
+          await AsyncStorage.setItem('FIRST_TIME_USER', 'true');
+          await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'true');
+        } else {
+          await AsyncStorage.setItem('FIRST_TIME_USER', 'false');
+          await AsyncStorage.setItem('FREE_QUESTION_NOTICE_ELIGIBLE', 'false');
+        }
+
+        await AsyncStorage.setItem('AUTH_TOKEN', token);
+        logMetaEvent('fb_mobile_login');
+        setRedirectTo(isNewUser ? '/onboarding' : '/home');
+      } else {
+        throw new Error('Invalid phone number or email');
       }
-      if (!token || !nextRoute) throw new Error('Invalid login response');
-      await AsyncStorage.setItem('AUTH_TOKEN', token);
-      await AsyncStorage.removeItem('details');
-      logMetaEvent('fb_mobile_login');
-      setRedirectTo(nextRoute);
-    } catch {
-      setApiError('Network error while verifying OTP');
+    } catch (e) {
+      setApiError(e?.message || 'Network error while verifying OTP');
     } finally {
       setLoadingVerifyOtp(false);
       verifyOtpLock.current = false;
@@ -241,52 +345,52 @@ export default function Index() {
           {step === 'phone' && (
             <>
               <Text style={styles.panelTitle}>Hi Welcome!</Text>
-              <Text style={styles.panelSubtitle}>Enter your mobile number to continue</Text>
+              <Text style={styles.panelSubtitle}>Enter your mobile number or email to continue</Text>
               <View style={styles.divider} />
 
               <KeyboardAwareScrollView
-                enableAutomaticScroll={Platform.OS === 'ios'}
-                enableOnAndroid={false}
+                enableAutomaticScroll={true}
+                enableOnAndroid={true}
                 keyboardShouldPersistTaps="handled"
                 keyboardOpeningTime={0}
-                extraScrollHeight={Platform.OS === 'ios' ? 200 : 0}
-                contentContainerStyle={{ paddingBottom: keyboardOpen ? 120 : 0 }}
+                extraScrollHeight={Platform.OS === 'ios' ? 200 : 20}
+                contentContainerStyle={{ paddingBottom: 20 }}
               >
                 <View style={styles.phoneField}>
                   <View style={styles.phonePrefix}>
-                    <Ionicons name="call" size={16} color={colors.gold} />
-                    <Text style={styles.phonePrefixText}>+91</Text>
+                    <Ionicons
+                      name={detectMethod(identifier) === 'email' ? 'mail' : 'call'}
+                      size={16}
+                      color={colors.gold}
+                    />
                   </View>
                   <TextInput
-                    value={phone}
-                    onChangeText={(v) => {
-                      const digits = v.replace(/\D/g, '').slice(0, 10);
-                      setPhone(digits);
-                      if (digits.length === 10) Keyboard.dismiss();
-                    }}
-                    placeholder="Enter your mobile number"
+                    value={identifier}
+                    onChangeText={handleIdentifierChange}
+                    placeholder="Mobile number or email"
                     placeholderTextColor={colors.textSubtle}
                     style={styles.phoneInputInner}
-                    keyboardType="phone-pad"
-                    maxLength={10}
+                    keyboardType="default"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                     underlineColorAndroid="transparent"
                   />
                 </View>
+
+                <TouchableOpacity style={styles.ctaBtn} onPress={() => startOtp()} disabled={loadingSendOtp} activeOpacity={0.9}>
+                  <LinearGradient colors={colors.goldGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaInner}>
+                    <Text style={styles.ctaBtnText}>{loadingSendOtp ? 'Sending...' : 'Continue Securely'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
+                <Text style={styles.smallNote}>🔒 100% secure OTP login</Text>
+                <Text style={styles.footerText}>
+                  By signing up, you agree to our
+                  <Text style={styles.linkText} onPress={() => router.push('/TermsConditions')}> Terms of Use</Text> and
+                  <Text style={styles.linkText} onPress={() => router.push('/PrivacyPolicy')}> Privacy Policy</Text>
+                </Text>
               </KeyboardAwareScrollView>
-
-              <TouchableOpacity style={styles.ctaBtn} onPress={startOtp} disabled={loadingSendOtp} activeOpacity={0.9}>
-                <LinearGradient colors={colors.goldGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaInner}>
-                  <Text style={styles.ctaBtnText}>{loadingSendOtp ? 'Sending...' : 'Continue Securely'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {apiError ? <Text style={styles.errorText}>{apiError}</Text> : null}
-              <Text style={styles.smallNote}>🔒 100% secure OTP login</Text>
-              <Text style={styles.footerText}>
-                By signing up, you agree to our
-                <Text style={styles.linkText} onPress={() => router.push('/TermsConditions')}> Terms of Use</Text> and
-                <Text style={styles.linkText} onPress={() => router.push('/PrivacyPolicy')}> Privacy Policy</Text>
-              </Text>
             </>
           )}
 
@@ -297,10 +401,10 @@ export default function Index() {
 
               <KeyboardAwareScrollView
                 enableAutomaticScroll={Platform.OS === 'ios'}
-                enableOnAndroid={false}
+                enableOnAndroid={true}
                 keyboardShouldPersistTaps="handled"
                 keyboardOpeningTime={0}
-                extraScrollHeight={Platform.OS === 'ios' ? 200 : 0}
+                extraScrollHeight={Platform.OS === 'ios' ? 200 : -20}
                 contentContainerStyle={{ paddingBottom: keyboardOpen ? 100 : 0 }}
               >
                 <View style={styles.otpBoxesRow}>
@@ -315,6 +419,14 @@ export default function Index() {
                         if (digit) {
                           if (i < 5) [d2Ref, d3Ref, d4Ref, d5Ref, d6Ref][i]?.current?.focus();
                           else Keyboard.dismiss();
+                        }
+                      }}
+                      onKeyPress={({ nativeEvent }) => {
+                        if (nativeEvent.key === 'Backspace' && !val && i > 0) {
+                          const prevRef = [d1Ref, d2Ref, d3Ref, d4Ref, d5Ref, d6Ref][i - 1];
+                          const prevSetter = [setD1, setD2, setD3, setD4, setD5, setD6][i - 1];
+                          prevSetter('');
+                          prevRef?.current?.focus();
                         }
                       }}
                       keyboardType="number-pad"
@@ -341,7 +453,7 @@ export default function Index() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.changeBtn} onPress={() => setStep('phone')}>
-                <Text style={styles.changeBtnText}>Change Mobile Number</Text>
+                <Text style={styles.changeBtnText}>Change Number / Email</Text>
               </TouchableOpacity>
             </>
           )}

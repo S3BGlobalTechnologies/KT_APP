@@ -27,7 +27,21 @@ export default function DoshReport() {
     'sade-sati': t('sadeSati'),
     'sadhe-sati': t('sadeSati'),
   };
+// DivineAPI uses non-standard codes for some languages
+  const DIVINE_API_LANGUAGE_MAP = {
+    mr: 'ma',   // Marathi
+    ta: 'tm',   // Tamil
+    te: 'tl',   // Telugu
+    // gu: Gujarati is NOT supported by DivineAPI — no code will work
+  };
 
+  const getApiLanguage = (lang, forType) => {
+    if (forType === 'manglik-dosh') {
+      if (lang === 'gu') return 'en'; // Gujarati unsupported — fallback to English
+      if (DIVINE_API_LANGUAGE_MAP[lang]) return DIVINE_API_LANGUAGE_MAP[lang];
+    }
+    return lang || '';
+  };
   const mapProfileToApi = (p) => ({
     full_name: p?.full_name || p?.fullName || p?.name || '',
     day: p?.day ? String(p.day).padStart(2, '0') : '',
@@ -40,7 +54,7 @@ export default function DoshReport() {
     city: p?.city || '',
     state: p?.state || '',
     country: p?.country || '',
-    language:language || '',
+    language: getApiLanguage(language, type),
   });
   
   console.log('language:', language);
