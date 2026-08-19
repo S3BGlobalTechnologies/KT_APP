@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "623835552380",
+    "project_id": "kundlitimeapp",
+    "storage_bucket": "kundlitimeapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623835552380:android:7f859f81cdd35a64e207f9",
+        "android_client_info": {
+          "package_name": "com.kundlitime.kundliapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjRJuHAMu63prRYU796R12NX0_Y9X9nKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
