@@ -11,6 +11,7 @@ import {
   requestMindAnalysisReading,
   resolveMindAnalysisUserId,
 } from '@/lib/mindAnalysis';
+import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import { radius } from '@/lib/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -266,6 +267,17 @@ function OnboardingWizard() {
       const existingRaw = await AsyncStorage.getItem('USER_PROFILE');
       const existing = existingRaw ? JSON.parse(existingRaw) : {};
       stored = { ...existing, ...payload };
+    }
+
+    // Create (or reuse) the kk-agent birth profile so chat can send
+    // params.profile_id. Best-effort — chat still works without it,
+    // just without birth-chart context.
+    
+     try {
+      const kkProfileId = await createOrGetKkAgentProfile(stored);
+      stored = { ...stored, kkAgentProfileId: kkProfileId };
+    } catch (e) {
+      console.warn('KK_AGENT_PROFILE_CREATE_ERROR:', e?.message || e);
     }
 
     await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(stored));

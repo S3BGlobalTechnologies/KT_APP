@@ -188,40 +188,47 @@ export default function RootLayout() {
     };
   }, []);
 
-// 🔔 GLOBAL FACEBOOK TRACKING HANDLER 
+// 🔔 GLOBAL FACEBOOK TRACKING HANDLER (Optional - Expo Go may not support)
 
- useEffect(() => {
+useEffect(() => {
   (async () => {
     try {
-      const { Settings, AppEventsLogger } =
-        await import('react-native-fbsdk-next');
-
-      Settings.initializeSDK();
-
-      // iOS permission
-      if (Platform.OS === 'ios') {
-        const { requestTrackingPermissionsAsync } =
-          await import('expo-tracking-transparency');
-
-        const { status } = await requestTrackingPermissionsAsync();
-
-        if (typeof Settings.setAdvertiserTrackingEnabled === 'function') {
-          await Settings.setAdvertiserTrackingEnabled(status === 'granted');
+      // Try to import, but it's okay if it fails
+      try {
+        const fbsdk = await import('react-native-fbsdk-next');
+        
+        if (!fbsdk?.Settings) {
+          console.log('⚠️ Facebook SDK Settings unavailable in Expo Go');
+          return;
         }
+
+        const { Settings, AppEventsLogger } = fbsdk;
+
+        // Only call if function exists
+        Settings.initializeSDK?.();
+
+        if (Platform.OS === 'ios') {
+          try {
+            const { requestTrackingPermissionsAsync } =
+              await import('expo-tracking-transparency');
+            const { status } = await requestTrackingPermissionsAsync();
+            Settings.setAdvertiserTrackingEnabled?.(status === 'granted');
+          } catch (e) {
+            console.log('⚠️ iOS tracking permission skipped');
+          }
+        }
+
+        AppEventsLogger?.logEvent?.('fb_mobile_activate_app');
+        console.log('✅ Meta tracking initialized');
+
+      } catch (importError) {
+        console.log('⚠️ Facebook SDK not available in this environment');
       }
-
-      // ✅ Track app open (for BOTH Android & iOS)
-      AppEventsLogger.logEvent('fb_mobile_activate_app');
-
-      console.log('✅ Meta tracking working');
-
     } catch (e) {
-      console.log('❌ Meta tracking error:', e);
+      console.log('⚠️ Meta tracking setup skipped:', e?.message);
     }
   })();
 }, []);
-
- 
    
 
 

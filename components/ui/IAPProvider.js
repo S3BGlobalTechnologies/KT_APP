@@ -1,12 +1,32 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect } from "react";
 import { AppState, Platform } from "react-native";
-import {
-    ErrorCode,
-    finishTransaction,
-    getAvailablePurchases,
-    useIAP
-} from "react-native-iap";
+
+// ✅ CONDITIONAL IMPORT
+let RNIap;
+let useIAP, ErrorCode, finishTransaction, getAvailablePurchases;
+
+try {
+  const iap = require("react-native-iap");
+  RNIap = iap;
+  useIAP = iap.useIAP;
+  ErrorCode = iap.ErrorCode;
+  finishTransaction = iap.finishTransaction;
+  getAvailablePurchases = iap.getAvailablePurchases;
+} catch (e) {
+  console.log("⚠️ react-native-iap not available in Expo Go");
+  // Dummy exports
+  useIAP = () => ({
+    connected: false,
+    products: [],
+    subscriptions: [],
+    getProducts: async () => [],
+    requestPurchase: async () => null,
+  });
+  ErrorCode = {};
+  finishTransaction = async () => null;
+  getAvailablePurchases = async () => [];
+}
 
 const ORDER_DATA_KEY = "ORDER_DATA";
 const PAYMENT_STATUS_KEY = "paymentStatus";
@@ -172,13 +192,6 @@ export default function IAPProvider({ children }) {
       await AsyncStorage.removeItem(ORDER_DATA_KEY);
     } catch (e) {
       console.log("❌ VERIFY ERROR:", e?.message || e);
-      console.log("❌ VERIFY ERROR DETAILS:", {
-        platform: Platform.OS,
-        productId: purchase?.productId,
-        transactionId: purchase?.transactionId || purchase?.id,
-        purchaseToken: purchase?.purchaseToken || purchase?.purchaseTokenAndroid,
-        packageName: purchase?.packageNameAndroid,
-      });
       const orderDataString = await AsyncStorage.getItem(ORDER_DATA_KEY);
       if (orderDataString) {
         await AsyncStorage.setItem(PAYMENT_STATUS_KEY, "FAILED");
@@ -191,7 +204,6 @@ export default function IAPProvider({ children }) {
     const orderDataString = await AsyncStorage.getItem(ORDER_DATA_KEY);
     console.log("🔎 CHECK PENDING PURCHASE START:", {
       platform: Platform.OS,
-      connected,
       hasOrderData: Boolean(orderDataString),
       skipConnectionCheck,
       source,
@@ -232,13 +244,6 @@ export default function IAPProvider({ children }) {
 
       if (matchingPurchase) {
         console.log("🔥 FOUND PENDING PURCHASE:", matchingPurchase.productId);
-        console.log("🔥 MATCHING PURCHASE DETAILS:", {
-          productId: matchingPurchase?.productId,
-          transactionId: matchingPurchase?.transactionId || matchingPurchase?.id,
-          purchaseToken:
-            matchingPurchase?.purchaseToken || matchingPurchase?.purchaseTokenAndroid,
-          packageName: matchingPurchase?.packageNameAndroid,
-        });
         await verifyPurchase(matchingPurchase);
       } else {
         console.log("⚠️ NO PURCHASE FOUND FOR ACTIVE FLOW");
@@ -257,13 +262,6 @@ export default function IAPProvider({ children }) {
 
   const handlePurchaseError = useCallback(async (error) => {
     console.log("❌ PURCHASE ERROR:", error?.code, error?.message);
-    console.log("❌ PURCHASE ERROR DETAILS:", {
-      platform: Platform.OS,
-      code: error?.code,
-      message: error?.message,
-      debugMessage: error?.debugMessage,
-      responseCode: error?.responseCode,
-    });
     const orderDataString = await AsyncStorage.getItem(ORDER_DATA_KEY);
     if (!orderDataString) {
       console.log("❌ PURCHASE ERROR WITH NO ORDER DATA");
@@ -288,39 +286,35 @@ export default function IAPProvider({ children }) {
   }, [checkPendingPurchase]);
 
   const {
-  connected,
-  products,
-  subscriptions,
-  getProducts,
-  requestPurchase,
-} = useIAP({
-  onPurchaseSuccess: verifyPurchase,
-  onPurchaseError: handlePurchaseError,
-});
+    connected,
+    products,
+    subscriptions,
+    getProducts,
+    requestPurchase,
+  } = useIAP({
+    onPurchaseSuccess: verifyPurchase,
+    onPurchaseError: handlePurchaseError,
+  });
 
-useEffect(() => {
-  const loadProducts = async () => {
-    try {
-      if (!connected) {
-        return;
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        if (!connected) {
+          return;
+        }
+
+        const result = await getProducts({
+          skus: [Platform.OS === "ios" ? IOS_CHAT_PRODUCT_ID : ANDROID_CHAT_PRODUCT_ID],
+        });
+
+        console.log("🔥 FETCHED PRODUCTS:", result);
+      } catch (e) {
+        console.log("❌ PRODUCT FETCH ERROR:", e);
       }
+    };
 
-      const result = await getProducts({
-        skus: [Platform.OS === "ios" ? IOS_CHAT_PRODUCT_ID : ANDROID_CHAT_PRODUCT_ID],
-      });
-
-      console.log("🔥 FETCHED PRODUCTS:", result);
-      console.log("🔥 PRODUCT FETCH CONTEXT:", {
-        platform: Platform.OS,
-        requestedSkus: [Platform.OS === "ios" ? IOS_CHAT_PRODUCT_ID : ANDROID_CHAT_PRODUCT_ID],
-      });
-    } catch (e) {
-      console.log("❌ PRODUCT FETCH ERROR:", e);
-    }
-  };
-
-  loadProducts();
-}, [connected]);
+    loadProducts();
+  }, [connected, getProducts]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
@@ -342,4 +336,3 @@ useEffect(() => {
 
   return children;
 }
-

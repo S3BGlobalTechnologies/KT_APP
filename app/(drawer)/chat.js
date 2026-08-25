@@ -1015,23 +1015,21 @@ export default function Chat() {
         };
       }
 
+            const kkProfileId = profileData?.kkAgentProfileId;
       const requestPayload = {
-        sessionId,
-        action: 'sendMessage',
-        ...(privateModeEnabledForSession ? { privacyMode: true } : {}),
-        chatInput,
-        token: authToken,
+        question: userMsg.text,
+        params: kkProfileId ? { profile_id: kkProfileId } : {},
       };
 
       console.log('CHAT_QUESTION_PAYLOAD:', requestPayload);
 
       const res = await fetch(
-        `${process.env.EXPO_PUBLIC_API_CHAT_AGENT_WEBHOOK_URL}/chat`,
+        `${process.env.EXPO_PUBLIC_KK_AGENT_BASE_URL}/v1/webhooks/${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_ID}/invoke`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            token: authToken || '',
+            Authorization: `Bearer ${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_SECRET}`,
           },
           body: JSON.stringify(requestPayload),
         }
@@ -1047,7 +1045,7 @@ export default function Chat() {
         {
           id: `a-${Date.now()}`,
           from: 'astro',
-          text: json?.output || t('noResponse'),
+          text: json?.text || t('noResponse'),
         },
       ]);
 
