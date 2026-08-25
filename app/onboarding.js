@@ -269,15 +269,24 @@ function OnboardingWizard() {
       stored = { ...existing, ...payload };
     }
 
-    // Create (or reuse) the kk-agent birth profile so chat can send
-    // params.profile_id. Best-effort — chat still works without it,
+    // profile_id for chat (params.profile_id → birth-chart context).
+    //
+    // PREFERRED: our backend creates the kk-agent birth_profile server-side
+    // (authenticated with a real Keycloak service token) and returns it as
+    // data.kkAgentProfileId — in which case `stored` already has it and we do
+    // nothing here. This is the only path that works against the hosted
+    // kk-agent (X-Dev-Actor-Id is rejected in non-dev environments).
+    //
+    // FALLBACK (local dev only): if the backend did NOT supply an id, try the
+    // direct X-Dev-Actor-Id shim. Best-effort — chat still works without it,
     // just without birth-chart context.
-    
-     try {
-      const kkProfileId = await createOrGetKkAgentProfile(stored);
-      stored = { ...stored, kkAgentProfileId: kkProfileId };
-    } catch (e) {
-      console.warn('KK_AGENT_PROFILE_CREATE_ERROR:', e?.message || e);
+    if (!stored?.kkAgentProfileId) {
+      try {
+        const kkProfileId = await createOrGetKkAgentProfile(stored);
+        stored = { ...stored, kkAgentProfileId: kkProfileId };
+      } catch (e) {
+        console.warn('KK_AGENT_PROFILE_CREATE_ERROR:', e?.message || e);
+      }
     }
 
     await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(stored));
