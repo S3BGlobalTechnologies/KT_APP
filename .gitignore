@@ -17,6 +17,7 @@ expo-env.d.ts
 *.mobileprovision
 *.pem
 *firebase-adminsdk*.json
+kundlitimeapp-firebase-adminsdk-fbsvc-b6adc5b1ff.json
 
 # Metro / debug
 .metro-health-check*
