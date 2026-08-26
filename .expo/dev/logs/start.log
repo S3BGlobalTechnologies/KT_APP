@@ -1,0 +1,3 @@
+{"_e":"root:init","_t":1785757727098,"format":"v0-jsonl","version":"57.0.11"}
+{"_e":"env:mode","_t":1785757727099,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1785757727103,"mode":"development","files":["../..\\..\\.env.development","../..\\..\\.env"],"env":{"EXPO_PUBLIC_API_ADMIN_BASE_URL":"https://aiagent01.s3bglobal.com/webhook/dev/admin","EXPO_PUBLIC_API_BASE_URL":"https://aiagent01.s3bglobal.com/webhook/dev","EXPO_PUBLIC_API_CHAT_AGENT_WEBHOOK_URL":"https://aiagent01.s3bglobal.com/webhook/bf572911-26c6-4aeb-84e1-f682dff55e65","EXPO_PUBLIC_API_DYNAMIC_QUESTION":"https://aiagent01.s3bglobal.com/webhook/eb5f1948-9efc-458d-8da6-7d55c9625666"}}
