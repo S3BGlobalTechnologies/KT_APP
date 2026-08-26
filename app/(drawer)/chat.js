@@ -962,6 +962,31 @@ export default function Chat() {
 
   const [dynamicQuestion, setDynamicQuestion] = useState('');
 
+  // Save one question/answer turn to the server-side chat history so it shows
+  // up in the Chat History screen (get-all-chat-history reads the same store).
+  // kk-agent produces the answer; this call only records what was said. Skipped
+  // in private mode by the caller. Best-effort — a failure never affects chat.
+  const persistChatTurn = useCallback(async (sid, question, answer) => {
+    try {
+      const token = (await AsyncStorage.getItem('AUTH_TOKEN')) || authToken || '';
+      if (!token || !sid || !question) return;
+      await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE_URL}/kundlikonnect/save-chat-history`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', token },
+          body: JSON.stringify({
+            sessionId: String(sid),
+            userQuestion: String(question),
+            agentResponse: String(answer || ''),
+          }),
+        }
+      );
+    } catch (e) {
+      console.warn('SAVE_CHAT_HISTORY_ERROR:', e?.message || e);
+    }
+  }, [authToken]);
+
    const sendMessage = async () => {
     if (
       !message.trim() ||
@@ -1038,6 +1063,7 @@ export default function Chat() {
       if (!firstMessageSent) setFirstMessageSent(true);
 
       const json = await res.json();
+      const answerText = json?.text || t('noResponse');
 
       // Remove analyzer message before adding astro response
       setMessages((p) => [
@@ -1045,9 +1071,15 @@ export default function Chat() {
         {
           id: `a-${Date.now()}`,
           from: 'astro',
-          text: json?.text || t('noResponse'),
+          text: answerText,
         },
       ]);
+
+      // Record this turn in server-side history so it appears in Chat History.
+      // Never saved in private mode. Best-effort; does not block the chat.
+      if (!privateModeEnabledForSession) {
+        persistChatTurn(sessionId, userMsg.text, answerText);
+      }
 
       if (paidPendingStart && !chatSessionStarted) {
         setChatSessionStarted(true);

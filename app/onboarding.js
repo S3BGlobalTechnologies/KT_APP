@@ -271,15 +271,13 @@ function OnboardingWizard() {
 
     // profile_id for chat (params.profile_id → birth-chart context).
     //
-    // PREFERRED: our backend creates the kk-agent birth_profile server-side
-    // (authenticated with a real Keycloak service token) and returns it as
-    // data.kkAgentProfileId — in which case `stored` already has it and we do
-    // nothing here. This is the only path that works against the hosted
-    // kk-agent (X-Dev-Actor-Id is rejected in non-dev environments).
+    // PREFERRED (Option B): our backend creates the kk-agent birth_profile and
+    // returns it as data.kkAgentProfileId — in which case `stored` already has
+    // it and we do nothing here.
     //
-    // FALLBACK (local dev only): if the backend did NOT supply an id, try the
-    // direct X-Dev-Actor-Id shim. Best-effort — chat still works without it,
-    // just without birth-chart context.
+    // FALLBACK: if the backend did not supply an id, create it directly via
+    // X-Actor-Id (accepted by the hosted server). Best-effort — chat still
+    // works without it, just without birth-chart context.
     if (!stored?.kkAgentProfileId) {
       try {
         const kkProfileId = await createOrGetKkAgentProfile(stored);

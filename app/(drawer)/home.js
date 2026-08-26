@@ -14,6 +14,7 @@ import {
   requestMindAnalysisReading,
   resolveMindAnalysisUserId,
 } from '@/lib/mindAnalysis';
+import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import { CHAT_REMAINING_KEY, useChatTimer } from "@/contexts/chatTimerContext";
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
@@ -204,6 +205,10 @@ useFocusEffect(
     'AIJyotishKavitaVerma.jpeg': require('../../assets/images/AIJyotishKavitaVerma.jpeg'),
   };
 
+  // Tracks which users we've already backfilled a kk-agent profile for,
+  // so the create call fires at most once per user per app session.
+  const kkBackfillDoneRef = useRef(new Set());
+
   // Fetch user-info when Home gains focus
   useFocusEffect(
     useCallback(() => {
@@ -233,7 +238,56 @@ useFocusEffect(
           setProfile(user);
           logMetaEvent('fb_mobile_home');
           if (!cancelled && user) {
-            await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(user));
+            // Preserve any kk-agent profile id we've already cached locally.
+            // user-info does not carry it (the id lives only on the device),
+            // so without this merge a profile refresh would wipe it and make
+            // the create call fire again. AsyncStorage survives app restarts,
+            // so once cached the backfill below never runs again for this user.
+            let cachedProfileId = user?.kkAgentProfileId || null;
+            if (!cachedProfileId) {
+              try {
+                const prevRaw = await AsyncStorage.getItem('USER_PROFILE');
+                cachedProfileId = prevRaw
+                  ? JSON.parse(prevRaw)?.kkAgentProfileId || null
+                  : null;
+              } catch {}
+            }
+
+            const mergedUser = cachedProfileId
+              ? { ...user, kkAgentProfileId: cachedProfileId }
+              : user;
+            setProfile(mergedUser);
+            await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(mergedUser));
+
+            // Backfill only when NO profile id exists yet (neither on user-info
+            // nor cached locally). The stored birth details go straight to
+            // kk-agent, which mints the profile_id; we cache it so chat can send
+            // it as params.profile_id. Fires at most once per user; kk-agent
+            // creates it, no backend involved. Idempotent + best-effort — chat
+            // still works without it, just without birth-chart context.
+            const uid = resolveMindAnalysisUserId(user);
+            const hasBirthData =
+              user?.day && user?.month && user?.year && user?.city;
+            if (
+              uid &&
+              !cachedProfileId &&
+              hasBirthData &&
+              !kkBackfillDoneRef.current.has(uid)
+            ) {
+              kkBackfillDoneRef.current.add(uid);
+              try {
+                const kkProfileId = await createOrGetKkAgentProfile(user);
+                if (!cancelled && kkProfileId) {
+                  const merged = { ...user, kkAgentProfileId: kkProfileId };
+                  await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(merged));
+                  setProfile(merged);
+                }
+              } catch (e) {
+                // Allow a later focus to retry.
+                kkBackfillDoneRef.current.delete(uid);
+                console.warn('KK_AGENT_PROFILE_BACKFILL_ERROR:', e?.message || e);
+              }
+            }
           }
         } catch (e) {
           console.warn('Home: failed to fetch user-info', e);
