@@ -1,3 +1,41 @@
 # dependencies
 node_modules/
 
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native (do NOT commit secrets)
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*firebase-adminsdk*.json
+
+# Metro / debug
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# local env files
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Examples
+app-example
+
+# Generated native folders (Expo Managed)
+ios/
+android/
