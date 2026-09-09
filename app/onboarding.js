@@ -25,6 +25,7 @@ import {
   Easing,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -57,6 +58,25 @@ const APP_LANGUAGES = [
   { value: 'Telugu', label: 'తెలుగు' },
   { value: 'Bengali', label: 'বাংলা' },
   { value: 'Kannada', label: 'ಕನ್ನಡ' },
+];
+
+// Languages the mind-analysis reading can be generated in. Mirrors the
+// returning-user popup on Home (app/(drawer)/home.js) so new users get the same
+// choice — this is independent of the app-UI language picked on the first step.
+const MIND_ANALYSIS_LANGUAGES = [
+  { value: 'English', label: 'English' },
+  { value: 'Hinglish', label: 'Hinglish' },
+  { value: 'Hindi', label: 'हिंदी' },
+  { value: 'Bengali', label: 'বাংলা' },
+  { value: 'Telugu', label: 'తెలుగు' },
+  { value: 'Marathi', label: 'मराठी' },
+  { value: 'Tamil', label: 'தமிழ்' },
+  { value: 'Gujarati', label: 'ગુજરાતી' },
+  { value: 'Kannada', label: 'ಕನ್ನಡ' },
+  { value: 'Malayalam', label: 'മലയാളം' },
+  { value: 'Punjabi', label: 'ਪੰਜਾਬੀ' },
+  { value: 'Odia', label: 'ଓଡ଼ିଆ' },
+  { value: 'Assamese', label: 'অসমীয়া' },
 ];
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -111,6 +131,11 @@ function OnboardingWizard() {
   const [readingError, setReadingError] = useState('');
   const [readingLocked, setReadingLocked] = useState(false);
   const [readingLoading, setReadingLoading] = useState(false);
+
+  // Mind-analysis language popup (shown after the birth details are entered,
+  // before the reading is generated — parity with the returning-user flow).
+  const [analysisLangModalVisible, setAnalysisLangModalVisible] = useState(false);
+  const [profileForReading, setProfileForReading] = useState(null);
 
   const readingStartedRef = useRef(false);
   const mountedRef = useRef(true);
@@ -293,9 +318,13 @@ function OnboardingWizard() {
   }, [authToken, email, expoPushToken, gender, language, name, place, splitDob, splitTime]);
 
   /* The reading. Runs once, on entering the final step. */
-  const runReading = useCallback(async (profile) => {
+  const runReading = useCallback(async (profile, chosenLanguage) => {
     if (readingStartedRef.current) return;
     readingStartedRef.current = true;
+
+    // The mind-analysis language picked in the popup wins; fall back to the
+    // app-UI language chosen on the first step if none was passed.
+    const readingLanguage = chosenLanguage || language;
 
     setReadingLoading(true);
     setReadingError('');
@@ -330,7 +359,7 @@ function OnboardingWizard() {
         userId,
       });
 
-      const answer = await requestMindAnalysisReading(profile, sessionId, language, token);
+      const answer = await requestMindAnalysisReading(profile, sessionId, readingLanguage, token);
       if (mountedRef.current) setReading(answer);
 
       await recordMindAnalysisSession(sessionId, token, userId);
@@ -369,7 +398,10 @@ function OnboardingWizard() {
     return '';
   };
 
-  // Last input step: persist the profile, then hand over to the reading.
+  // Last input step: persist the profile, then ask which language the reading
+  // should come back in (parity with the returning-user popup on Home). The
+  // reading is generated only after a language is chosen — see
+  // `onSelectAnalysisLanguage`.
   const finishInputSteps = useCallback(
     async (overrides) => {
       setSaving(true);
@@ -377,15 +409,28 @@ function OnboardingWizard() {
       try {
         const profile = await saveProfile(overrides);
         if (!mountedRef.current) return;
-        setStepIndex(STEPS.indexOf('reading'));
-        runReading(profile);
+        setProfileForReading(profile);
+        setAnalysisLangModalVisible(true);
       } catch (e) {
         if (mountedRef.current) setError(e?.message || 'Something went wrong');
       } finally {
         if (mountedRef.current) setSaving(false);
       }
     },
-    [runReading, saveProfile]
+    [saveProfile]
+  );
+
+  // Language chosen for the mind-analysis → advance to the reading step and
+  // generate it in that language. Guards against a missing saved profile.
+  const onSelectAnalysisLanguage = useCallback(
+    (chosenLanguage) => {
+      setAnalysisLangModalVisible(false);
+      const profile = profileForReading;
+      if (!profile) return;
+      setStepIndex(STEPS.indexOf('reading'));
+      runReading(profile, chosenLanguage);
+    },
+    [profileForReading, runReading]
   );
 
   const goNext = async () => {
@@ -726,6 +771,47 @@ function OnboardingWizard() {
           autoAdvance(goToNextStep);
         }}
       />
+
+      {/* Mind-analysis language popup — shown after birth details, before the
+          reading. Back/dismiss falls back to the app-UI language so the user is
+          never trapped. Mirrors the returning-user popup on Home. */}
+      <Modal
+        visible={analysisLangModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => onSelectAnalysisLanguage(language)}
+      >
+        <View style={styles.maOverlay}>
+          <View style={styles.maCard}>
+            <Text style={styles.maTitle}>{t('mindAnalysisLanguageTitle')}</Text>
+            <Text style={styles.maDesc}>{t('mindAnalysisLanguageDesc')}</Text>
+            <ScrollView
+              style={styles.maLangList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {MIND_ANALYSIS_LANGUAGES.map((option) => {
+                const active = option.value === language;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.maLangRow, active && styles.maLangRowActive]}
+                    onPress={() => onSelectAnalysisLanguage(option.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.maLangText, active && styles.maLangTextActive]}>
+                      {option.label}
+                    </Text>
+                    {active ? (
+                      <Ionicons name="checkmark" size={16} color={colors.gold} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </GradientScreen>
   );
 }
@@ -850,4 +936,40 @@ const makeStyles = (colors) => StyleSheet.create({
   ctaText: { color: colors.onGold, fontSize: 16, fontWeight: '800' },
 
   error: { color: '#FF9B8A', marginTop: 14, fontWeight: '600' },
+
+  // Mind-analysis language popup
+  maOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  maCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    borderRadius: radius.lg,
+    padding: 20,
+  },
+  maTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
+  maDesc: { color: colors.textMuted, fontSize: 14, marginTop: 8 },
+  maLangList: { maxHeight: 340, marginTop: 12 },
+  maLangRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  maLangRowActive: { borderColor: colors.goldSoftBorder, backgroundColor: colors.goldSoftBg },
+  maLangText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  maLangTextActive: { color: colors.goldText, fontWeight: '700' },
 });
