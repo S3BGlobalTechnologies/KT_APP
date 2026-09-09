@@ -13,6 +13,7 @@ import {
   recordMindAnalysisSession,
   requestMindAnalysisReading,
   resolveMindAnalysisUserId,
+  submitMindAnalysisFeedback,
 } from '@/lib/mindAnalysis';
 import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import { CHAT_REMAINING_KEY, useChatTimer } from "@/contexts/chatTimerContext";
@@ -404,6 +405,24 @@ useFocusEffect(
       }
     },
     [profile, t]
+  );
+
+  // Sends the satisfaction % to the response-feedback store. Returning true
+  // unlocks "Continue to chat" inside MindAnalysisReading.
+  const submitAnalysisFeedback = useCallback(
+    async (percentage) => {
+      const token = (await AsyncStorage.getItem('AUTH_TOKEN')) || '';
+      const sid = (await AsyncStorage.getItem('CHAT_SESSION_ID')) || '';
+      const userId = resolveMindAnalysisUserId(profile);
+      return submitMindAnalysisFeedback({
+        sessionId: sid,
+        userId,
+        percentage,
+        reading: maReading,
+        token,
+      });
+    },
+    [profile, maReading]
   );
 
   // Dismissing runs no reading, so it must not consume the server window — just
@@ -1046,6 +1065,7 @@ const formatTime = (seconds) => {
                     loading={maLoading}
                     error={maError}
                     maxHeight={340}
+                    onSubmitFeedback={submitAnalysisFeedback}
                     onContinue={() => {
                       setMaStage(null);
                       router.push('/chat');
