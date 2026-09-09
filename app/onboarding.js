@@ -10,6 +10,7 @@ import {
   recordMindAnalysisSession,
   requestMindAnalysisReading,
   resolveMindAnalysisUserId,
+  submitMindAnalysisFeedback,
 } from '@/lib/mindAnalysis';
 import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import { radius } from '@/lib/theme';
@@ -581,12 +582,31 @@ function OnboardingWizard() {
     </View>
   );
 
+  // Sends the satisfaction % to the response-feedback store. Returning true
+  // unlocks "Continue to chat" inside MindAnalysisReading.
+  const submitAnalysisFeedback = useCallback(
+    async (percentage) => {
+      const token = authToken || (await AsyncStorage.getItem('AUTH_TOKEN')) || '';
+      const sid = (await AsyncStorage.getItem('CHAT_SESSION_ID')) || '';
+      const userId = resolveMindAnalysisUserId(profileForReading);
+      return submitMindAnalysisFeedback({
+        sessionId: sid,
+        userId,
+        percentage,
+        reading,
+        token,
+      });
+    },
+    [authToken, profileForReading, reading]
+  );
+
   const renderReadingStep = () => (
     <MindAnalysisReading
       text={reading}
       loading={readingLoading}
       error={readingError}
       onContinue={goToChat}
+      onSubmitFeedback={submitAnalysisFeedback}
     />
   );
 
