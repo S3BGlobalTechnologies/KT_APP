@@ -40,19 +40,19 @@ export default function CookiePolicyScreen() {
 
   <Text style={styles.heading}>2. Technologies We Use</Text>
   <Text style={styles.paragraph}>
-    We use the following specific technologies on your Android device:
+    We use the following specific technologies on your iOS device:
   </Text>
 
   <Text style={styles.listItem}>
-    • <Text style={styles.bold}>Android Advertising ID (AAID)</Text> – A unique,
-    resettable identifier provided by Google Play Services that helps us analyze
+    • <Text style={styles.bold}>Advertising Identifier (IDFA)</Text> – A unique,
+    resettable identifier provided by Apple that helps us analyze
     aggregate user behavior, attribute app installations, and manage
     advertising-related functions.
   </Text>
 
   <Text style={styles.listItem}>
     • <Text style={styles.bold}>SDKs (Software Development Kits)</Text> – Code
-    modules provided by our trusted partners (such as Google) that are embedded
+    modules provided by our trusted partners (such as Apple) that are embedded
     directly in the App to enable essential features including secure payments,
     analytics, crash reporting, and system notifications.
   </Text>
@@ -61,8 +61,8 @@ export default function CookiePolicyScreen() {
 
   <Text style={styles.listItem}>
     • <Text style={styles.bold}>Essential Operations</Text> – To securely
-    maintain your login session, authenticate users, and verify Google Play
-    Billing purchase receipts.
+    maintain your login session, authenticate users, and verify App Store
+    In-App Purchase receipts.
   </Text>
 
   <Text style={styles.listItem}>
@@ -80,7 +80,7 @@ export default function CookiePolicyScreen() {
   <Text style={styles.heading}>4. Third-Party Services</Text>
 
   <Text style={styles.listItem}>
-    • Google Play Services – Required for secure payment processing,
+    • Apple App Store & StoreKit – Required for secure payment processing,
     advertising services, and push notifications.
   </Text>
 
@@ -92,9 +92,9 @@ export default function CookiePolicyScreen() {
   <Text style={styles.heading}>5. Your Choices (How to Opt-Out)</Text>
 
   <Text style={styles.listItem}>
-    • Reset Advertising ID – Navigate to Settings &gt; Google &gt; Ads &gt;
-    Reset advertising ID on your Android device to clear or reset your current
-    advertising profile.
+    • Reset Advertising Identifier – Navigate to Settings &gt; Privacy &amp; Security &gt;
+    Apple Advertising &gt; Reset Identifier on your iOS device, or turn off &quot;Allow
+    Apps to Request to Track,&quot; to clear or reset your current advertising profile.
   </Text>
 
   <Text style={styles.listItem}>

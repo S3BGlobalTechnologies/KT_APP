@@ -13,13 +13,13 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
@@ -35,18 +35,8 @@ export default function Index() {
   const [authChecked, setAuthChecked] = useState(false);
   const [identifier, setIdentifier] = useState(''); // phone ya email, jo bhi user daale
   const [generatedOtp, setGeneratedOtp] = useState('');
-  const [d1, setD1] = useState('');
-  const [d2, setD2] = useState('');
-  const [d3, setD3] = useState('');
-  const [d4, setD4] = useState('');
-  const [d5, setD5] = useState('');
-  const [d6, setD6] = useState('');
-  const d1Ref = useRef(null);
-  const d2Ref = useRef(null);
-  const d3Ref = useRef(null);
-  const d4Ref = useRef(null);
-  const d5Ref = useRef(null);
-  const d6Ref = useRef(null);
+  const [otp, setOtp] = useState('');
+  const otpRef = useRef(null);
 
   const [timer, setTimer] = useState(60);
   const [loadingSendOtp, setLoadingSendOtp] = useState(false);
@@ -103,10 +93,25 @@ export default function Index() {
 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+    const hide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
+
+  // Auto-focus the OTP field when the OTP step becomes active
+  useEffect(() => {
+    if (step !== 'otp') return;
+    const id = setTimeout(() => otpRef.current?.focus(), 350);
+    return () => clearTimeout(id);
+  }, [step]);
+
+  const clearOtp = () => {
+    setOtp('');
+    setApiError('');
+    otpRef.current?.focus();
+  };
 
   const isValidPhone = (num) => /^[6-9]\d{9}$/.test(num);
   const isValidEmail = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
@@ -178,7 +183,7 @@ export default function Index() {
           await AsyncStorage.setItem('details', otpId);
           if (json?.otp) setGeneratedOtp(String(json.otp));
           else setGeneratedOtp(String(Math.floor(1000 + Math.random() * 9000)));
-          setD1(''); setD2(''); setD3(''); setD4(''); setD5(''); setD6('');
+          setOtp('');
           setTimer(60);
           setStep('otp');
         })
@@ -202,7 +207,7 @@ export default function Index() {
           setApiError(json?.message || 'Failed to send OTP');
           return;
         }
-        setD1(''); setD2(''); setD3(''); setD4(''); setD5(''); setD6('');
+        setOtp('');
         setTimer(60);
         setStep('otp');
       })
@@ -218,7 +223,7 @@ export default function Index() {
     if (verifyOtpLock.current) return;
     verifyOtpLock.current = true;
     setApiError('');
-    const entered = `${d1}${d2}${d3}${d4}${d5}${d6}`;
+    const entered = otp;
     if (!/^\d{6}$/.test(entered)) {
       setApiError('Enter valid 6-digit OTP');
       verifyOtpLock.current = false;
@@ -325,8 +330,7 @@ export default function Index() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 84 : 0}
-        enabled={Platform.OS === 'ios'}
+        keyboardVerticalOffset={0}
       >
         {/* Ambient decorative glow */}
         <View style={styles.ambientRing} pointerEvents="none">
@@ -334,9 +338,13 @@ export default function Index() {
         </View>
 
         {/* Brand */}
-        <View style={[styles.brandArea, { paddingTop: insets.top + 40 }]}>
-          <View style={styles.logoTile}>
-            <Image source={require('../assets/images/applogo.png')} style={styles.logo} resizeMode="contain" />
+        <View style={[styles.brandArea, { paddingTop: insets.top + (keyboardOpen ? 12 : 40) }]}>
+          <View style={[styles.logoTile, keyboardOpen && styles.logoTileCompact]}>
+            <Image
+              source={require('../assets/images/applogo.png')}
+              style={[styles.logo, keyboardOpen && styles.logoCompact]}
+              resizeMode="contain"
+            />
           </View>
         </View>
 
@@ -348,14 +356,7 @@ export default function Index() {
               <Text style={styles.panelSubtitle}>Enter your mobile number or email to continue</Text>
               <View style={styles.divider} />
 
-              <KeyboardAwareScrollView
-                enableAutomaticScroll={true}
-                enableOnAndroid={true}
-                keyboardShouldPersistTaps="handled"
-                keyboardOpeningTime={0}
-                extraScrollHeight={Platform.OS === 'ios' ? 200 : 20}
-                contentContainerStyle={{ paddingBottom: 20 }}
-              >
+              <View>
                 <View style={styles.phoneField}>
                   <View style={styles.phonePrefix}>
                     <Ionicons
@@ -390,7 +391,7 @@ export default function Index() {
                   <Text style={styles.linkText} onPress={() => router.push('/TermsConditions')}> Terms of Use</Text> and
                   <Text style={styles.linkText} onPress={() => router.push('/PrivacyPolicy')}> Privacy Policy</Text>
                 </Text>
-              </KeyboardAwareScrollView>
+              </View>
             </>
           )}
 
@@ -399,43 +400,46 @@ export default function Index() {
               <Text style={styles.panelTitle}>OTP Verification</Text>
               <Text style={styles.panelSubtitle}>Enter the OTP to begin your cosmic journey</Text>
 
-              <KeyboardAwareScrollView
-                enableAutomaticScroll={Platform.OS === 'ios'}
-                enableOnAndroid={true}
-                keyboardShouldPersistTaps="handled"
-                keyboardOpeningTime={0}
-                extraScrollHeight={Platform.OS === 'ios' ? 200 : -20}
-                contentContainerStyle={{ paddingBottom: keyboardOpen ? 100 : 0 }}
-              >
-                <View style={styles.otpBoxesRow}>
-                  {[d1, d2, d3, d4, d5, d6].map((val, i) => (
-                    <TextInput
+              <Pressable onPress={() => otpRef.current?.focus()}>
+                <View style={styles.otpBoxesRow} pointerEvents="none">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <View
                       key={i}
-                      ref={[d1Ref, d2Ref, d3Ref, d4Ref, d5Ref, d6Ref][i]}
-                      value={val}
-                      onChangeText={(v) => {
-                        const digit = v.replace(/\D/g, '').slice(-1);
-                        [setD1, setD2, setD3, setD4, setD5, setD6][i](digit);
-                        if (digit) {
-                          if (i < 5) [d2Ref, d3Ref, d4Ref, d5Ref, d6Ref][i]?.current?.focus();
-                          else Keyboard.dismiss();
-                        }
-                      }}
-                      onKeyPress={({ nativeEvent }) => {
-                        if (nativeEvent.key === 'Backspace' && !val && i > 0) {
-                          const prevRef = [d1Ref, d2Ref, d3Ref, d4Ref, d5Ref, d6Ref][i - 1];
-                          const prevSetter = [setD1, setD2, setD3, setD4, setD5, setD6][i - 1];
-                          prevSetter('');
-                          prevRef?.current?.focus();
-                        }
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={1}
-                      style={[styles.otpBox, val && styles.otpBoxFilled]}
-                    />
+                      style={[
+                        styles.otpBox,
+                        otp[i] ? styles.otpBoxFilled : null,
+                        i === otp.length ? styles.otpBoxActive : null,
+                      ]}
+                    >
+                      <Text style={styles.otpBoxText}>{otp[i] || ''}</Text>
+                    </View>
                   ))}
                 </View>
-              </KeyboardAwareScrollView>
+
+                <TextInput
+                  ref={otpRef}
+                  value={otp}
+                  onChangeText={(v) => {
+                    const digits = v.replace(/\D/g, '').slice(0, 6);
+                    setOtp(digits);
+                    if (apiError) setApiError('');
+                    if (digits.length === 6) otpRef.current?.blur();
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  textContentType="oneTimeCode"
+                  autoComplete={Platform.OS === 'ios' ? 'one-time-code' : 'sms-otp'}
+                  caretHidden
+                  contextMenuHidden
+                  style={styles.otpHiddenInput}
+                />
+              </Pressable>
+
+              {otp.length > 0 && (
+                <TouchableOpacity style={{ alignSelf: 'center', marginTop: 10 }} onPress={clearOtp}>
+                  <Text style={[styles.linkText, { fontSize: 13, fontWeight: '700' }]}>Clear</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={styles.ctaBtn} onPress={verifyOtp} disabled={loadingVerifyOtp} activeOpacity={0.9}>
                 <LinearGradient colors={colors.goldGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaInner}>
@@ -487,6 +491,8 @@ const makeStyles = (colors) => StyleSheet.create({
     elevation: 8,
   },
   logo: { width: 210, height: 96 },
+  logoTileCompact: { paddingHorizontal: 14, paddingVertical: 8 },
+  logoCompact: { width: 110, height: 50 },
 
   panel: {
     backgroundColor: colors.surfaceStrong,
@@ -523,11 +529,13 @@ const makeStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1, borderColor: colors.surfaceBorder,
     borderRadius: radius.sm,
-    textAlign: 'center',
-    fontSize: 20, fontWeight: '700',
-    color: colors.text,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  otpBoxText: { fontSize: 20, fontWeight: '700', color: colors.text },
   otpBoxFilled: { borderColor: colors.goldSoftBorder, backgroundColor: colors.goldSoftBg },
+  otpBoxActive: { borderColor: colors.goldText },
+  otpHiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 
   linkText: { color: colors.goldText },
   errorText: { color: '#FF9B8A', textAlign: 'center', marginTop: 10 },

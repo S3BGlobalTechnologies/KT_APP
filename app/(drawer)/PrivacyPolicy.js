@@ -70,10 +70,10 @@ export default function PrivacyPolicyScreen() {
         <Text style={styles.listItem}>• Phone number</Text>
         <Text style={styles.listItem}>• Device, OS version, and log information for analytics and security purposes</Text>
         <Text style={styles.paragraph}>
-          Payment Information: We do not collect or store your credit card, debit card, or banking details. All financial transactions are processed securely via the Google Play Store billing system. We only receive a transaction receipt (Transaction ID) from Google.
+          Payment Information: We do not collect or store your credit card, debit card, or banking details. All financial transactions are processed securely via the Apple App Store billing system. We only receive a transaction receipt (Transaction ID) from Apple.
         </Text>
 
-        <Text style={styles.heading}>1.1 Android App Permissions</Text>
+        <Text style={styles.heading}>1.1 iOS App Permissions</Text>
         <Text style={styles.listItem}>• Internet: To connect to our servers for chat and astrology data</Text>
         <Text style={styles.listItem}>• Notifications: To alert you about chat responses or daily horoscopes</Text>
 
@@ -106,7 +106,7 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={styles.heading}>5. Sharing of Information</Text>
         <Text style={styles.paragraph}>
-          We do not sell your personal data. We may share information with Google for billing, legal authorities, or during mergers, acquisitions, or restructuring.
+          We do not sell your personal data. We may share information with Apple for billing, legal authorities, or during mergers, acquisitions, or restructuring.
         </Text>
 
         <Text style={styles.heading}>6. Security</Text>
@@ -133,7 +133,7 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={styles.heading}>9. Tracking Technologies & Advertising IDs</Text>
         <Text style={styles.paragraph}>
-          We use Android Advertising ID (AAID) and device identifiers to maintain sessions, deliver personalized content, analyze performance, and manage advertisements. You may reset your AAID via device settings.
+          We use the Advertising Identifier (IDFA) and device identifiers to maintain sessions, deliver personalized content, analyze performance, and manage advertisements. You may reset your IDFA or limit ad tracking via device settings.
         </Text>
 
         <Text style={styles.heading}>10. International Data Transfers</Text>

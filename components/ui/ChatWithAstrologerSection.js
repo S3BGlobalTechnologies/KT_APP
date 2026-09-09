@@ -158,7 +158,7 @@ export default function ChatWithAstrologerSection() {
             </Text>
             <Text style={styles.exp}>{formatExp(astrologer.exp, t)}</Text>
             <View style={styles.ctaPill}>
-              <Text style={styles.ctaText}>{t('withastrologer')}</Text>
+              <Text style={styles.ctaText} numberOfLines={2}>{t('withastrologer')}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -194,7 +194,7 @@ const makeStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     flexShrink: 0,
     paddingHorizontal: 4,
-    width: 84,
+    width: 96,
   },
   avatarWrap: {
     width: 60,
@@ -227,17 +227,19 @@ const makeStyles = (colors) => StyleSheet.create({
   },
   ctaPill: {
     marginTop: 8,
+    alignSelf: 'stretch',
     backgroundColor: colors.goldSoftBg,
     borderWidth: 1,
     borderColor: colors.goldSoftBorder,
     borderRadius: 999,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 5,
   },
   ctaText: {
     color: colors.goldText,
     fontSize: 10.5,
     fontWeight: '700',
+    lineHeight: 14,
     textAlign: 'center',
   },
 });

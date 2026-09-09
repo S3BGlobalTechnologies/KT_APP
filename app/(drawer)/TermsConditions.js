@@ -73,13 +73,13 @@ export default function TermsAndConditions() {
         </Text>
 
         <Text style={styles.paragraph}>
-          Device Compatibility: We do not guarantee that the App will function uninterrupted or error-free on all devices, operating systems, or Android versions.
+          Device Compatibility: We do not guarantee that the App will function uninterrupted or error-free on all devices, operating systems, or iOS versions.
         </Text>
 
         <Text style={styles.sectionTitle}>1.1 AI Safety & Content Reporting</Text>
 
         <Text style={styles.paragraph}>
-          You acknowledge that AI-generated content may occasionally be inaccurate, incomplete, or inappropriate. We are committed to user safety and comply with Google Play’s AI-Generated Content policies.
+          You acknowledge that AI-generated content may occasionally be inaccurate, incomplete, or inappropriate. We are committed to user safety and comply with the Apple App Store’s User-Generated Content and AI content guidelines.
         </Text>
         <Text style={styles.paragraph}>
           Reporting Mechanism: Use the in-app “Thumbs Down” or reporting features to flag any offensive, harmful, misleading, or sexually explicit content generated during chats.
@@ -102,11 +102,11 @@ export default function TermsAndConditions() {
         </Text>
 
         <Text style={styles.paragraph}>
-          Payment Processing: All payments are processed securely through the Google Play Store billing system. We do not collect or store your credit card, debit card, or banking details.
+          Payment Processing: All payments are processed securely through the Apple App Store billing system. We do not collect or store your credit card, debit card, or banking details.
         </Text>
 
         <Text style={styles.paragraph}>
-          Refunds: Sales are generally final. Refunds may be considered in limited cases of technical failure (such as non-delivery of purchased credits). All refund requests are subject to Google Play’s Refund Policy and applicable laws.
+          Refunds: Sales are generally final. Refunds may be considered in limited cases of technical failure (such as non-delivery of purchased credits). All refund requests are subject to Apple’s App Store Refund Policy and applicable laws.
         </Text>
 
         <Text style={styles.sectionTitle}>3. User Responsibilities</Text>

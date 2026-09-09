@@ -28,6 +28,7 @@ import FeedbackPopup from '@/components/ui/FeedbackPopup';
 import PaymentPage from '@/components/ui/PaymentPage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
+import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -1040,30 +1041,89 @@ export default function Chat() {
         };
       }
 
-            const kkProfileId = profileData?.kkAgentProfileId;
-      const requestPayload = {
-        question: userMsg.text,
-        params: kkProfileId ? { profile_id: kkProfileId } : {},
+      // One webhook call. Returns the raw Response + parsed body so the caller
+      // can branch on HTTP status (an error body has no `text` field).
+      const invokeAgent = async (profileId) => {
+        const requestPayload = {
+          question: userMsg.text,
+          params: profileId ? { profile_id: profileId } : {},
+        };
+        console.log('CHAT_QUESTION_PAYLOAD:', requestPayload);
+        const r = await fetch(
+          `${process.env.EXPO_PUBLIC_KK_AGENT_BASE_URL}/v1/webhooks/${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_ID}/invoke`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_SECRET}`,
+            },
+            body: JSON.stringify(requestPayload),
+          }
+        );
+        const j = await r.json().catch(() => ({}));
+        return { r, j };
       };
 
-      console.log('CHAT_QUESTION_PAYLOAD:', requestPayload);
-
-      const res = await fetch(
-        `${process.env.EXPO_PUBLIC_KK_AGENT_BASE_URL}/v1/webhooks/${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_ID}/invoke`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.EXPO_PUBLIC_KK_AGENT_WEBHOOK_SECRET}`,
-          },
-          body: JSON.stringify(requestPayload),
+      // Mint a kk-agent birth profile from the stored birth details and cache
+      // its id. Returns null only when there are no birth details to send.
+      const mintProfileId = async () => {
+        try {
+          const rawProfile = await AsyncStorage.getItem('USER_PROFILE');
+          const stored = rawProfile ? JSON.parse(rawProfile) : profileData || {};
+          const hasBirthData = stored?.day && stored?.month && stored?.year && stored?.city;
+          if (!hasBirthData) return null;
+          const minted = await createOrGetKkAgentProfile(stored);
+          if (minted) {
+            const merged = { ...stored, kkAgentProfileId: minted };
+            await AsyncStorage.setItem('USER_PROFILE', JSON.stringify(merged));
+            setProfileData(merged);
+          }
+          return minted || null;
+        } catch (err) {
+          console.warn('KK_PROFILE_MINT_ERROR:', err?.message || err);
+          return null;
         }
-      );
+      };
+
+      // Fix A: guarantee a valid profile id BEFORE the call. Without it the
+      // webhook returns 403 no_birth_data_consent, which the app used to render
+      // as a silent "no response" for every question. The id lives only on the
+      // device, so it can be missing after a reinstall / cleared storage / new
+      // device, or if the Home-screen backfill silently failed. Mint on demand.
+      let kkProfileId = profileData?.kkAgentProfileId;
+      if (!kkProfileId) {
+        try {
+          const rawProfile = await AsyncStorage.getItem('USER_PROFILE');
+          kkProfileId = rawProfile ? JSON.parse(rawProfile)?.kkAgentProfileId : null;
+        } catch {}
+      }
+      if (!kkProfileId) {
+        kkProfileId = await mintProfileId();
+      }
+
+      let { r: res, j: json } = await invokeAgent(kkProfileId);
+
+      // Fix B: self-heal a stale/unknown profile id. The server has no such
+      // profile (its DB was reset, or the cached id is from another
+      // environment) → re-mint from birth details once and retry.
+      if (!res.ok && res.status === 404 && json?.detail?.code === 'profile_not_found') {
+        const reminted = await mintProfileId();
+        if (reminted) {
+          ({ r: res, j: json } = await invokeAgent(reminted));
+        }
+      }
 
       if (!firstMessageSent) setFirstMessageSent(true);
 
-      const json = await res.json();
-      const answerText = json?.text || t('noResponse');
+      // Fix B: honour the HTTP status. Previously ANY error body (which carries
+      // no `text` field) collapsed into "No response", hiding the real cause.
+      let answerText;
+      if (res.ok && json?.text) {
+        answerText = json.text;
+      } else {
+        console.warn('CHAT_INVOKE_FAILED:', res.status, json?.detail || json);
+        answerText = t('networkError');
+      }
 
       // Remove analyzer message before adding astro response
       setMessages((p) => [
@@ -1234,8 +1294,14 @@ export default function Chat() {
   };
 
 
+  // App Review account: this number gets unrestricted chat (no lock overlay, no
+  // paywall) so reviewers can test full chat end to end without payment.
+  const isUnlimitedReviewer = profileData?.phone === '9898989898';
+  // Visual lock: never locked for the reviewer account.
+  const uiChatLocked = chatLocked && !isUnlimitedReviewer;
+
   const showTimerPill =
-    profileData?.phone !== '9898989898' &&
+    !isUnlimitedReviewer &&
     (remainingSeconds > 0 || paidPendingStart);
   const displaySeconds = remainingSeconds > 0 ? remainingSeconds : PAID_SECONDS;
 
@@ -1636,7 +1702,7 @@ language={
          </Modal>
 
          <View style={{ position: 'relative', paddingHorizontal: horizontalPadding }}>
-        {chatLocked && (
+        {uiChatLocked && (
           <View style={[styles.inputOverlay, { backgroundColor: chatTheme.overlayBg }]}>
             <TouchableOpacity
               style={[styles.unlockBtn, { backgroundColor: chatTheme.unlockBg }]}
@@ -1668,7 +1734,7 @@ language={
               <View
                 style={[
                   styles.inputRow,
-                  chatLocked && styles.inputRowLocked,
+                  uiChatLocked && styles.inputRowLocked,
                   { backgroundColor: chatTheme.inputBg, borderColor: chatTheme.inputBorder },
                 ]}
               >
@@ -1690,8 +1756,8 @@ language={
                   }}
                   style={[
                     styles.textArea,
-                    chatLocked && styles.textAreaLocked,
-                    { height: chatLocked ? 35 : heights, color: chatTheme.inputText },
+                    uiChatLocked && styles.textAreaLocked,
+                    { height: uiChatLocked ? 35 : heights, color: chatTheme.inputText },
                   ]}
                   textAlignVertical="top"   // 🔴 REQUIRED for Android
                   blurOnSubmit={false}
@@ -1705,7 +1771,7 @@ language={
                 <TouchableOpacity
                   style={[
                     styles.sendBtn,
-                    chatLocked && styles.sendBtnLocked,
+                    uiChatLocked && styles.sendBtnLocked,
                     { backgroundColor: chatTheme.sendBg },
                   ]}
                   onPress={sendMessage}

@@ -41,7 +41,7 @@ export default function RefundPolicyScreen() {
             Payment Method: To continue chatting beyond the free limit, users may purchase additional minutes or credit packs.
           </Text>
           <Text style={styles.paragraph}>
-            Secure Processing: All financial transactions are processed securely through the Google Play Store billing system. We do not collect, store, or have access to your credit card or banking details.
+            Secure Processing: All financial transactions are processed securely through the Apple App Store billing system. We do not collect, store, or have access to your credit card or banking details.
           </Text>
 
           <Text style={styles.heading}>3. No Refund Policy (Standard)</Text>
@@ -54,11 +54,11 @@ export default function RefundPolicyScreen() {
 
           <Text style={styles.heading}>4. Exceptions & Technical Refunds</Text>
           <Text style={styles.paragraph}>
-            While standard sales are final, we may issue a refund through the Google Play Console under the following technical circumstances:
+            While standard sales are final, we may assist with a refund through Apple App Store Connect under the following technical circumstances:
           </Text>
           <View style={styles.list}>
-            <Text style={styles.listItem}>• Non-Delivery: Payment was deducted by Google, but chat minutes were not credited to your account due to a server or system error.</Text>
-            <Text style={styles.listItem}>• Duplicate Charge: You were charged more than once for the same transaction due to a Google Play processing issue.</Text>
+            <Text style={styles.listItem}>• Non-Delivery: Payment was deducted by Apple, but chat minutes were not credited to your account due to a server or system error.</Text>
+            <Text style={styles.listItem}>• Duplicate Charge: You were charged more than once for the same transaction due to an App Store processing issue.</Text>
           </View>
           <Text style={styles.paragraph}>How to Request a Refund:</Text>
           <Text style={styles.paragraph}>
@@ -70,15 +70,15 @@ export default function RefundPolicyScreen() {
           </Text>
           <View style={styles.list}>
             <Text style={styles.listItem}>• A brief description of the issue.</Text>
-            <Text style={styles.listItem}>• The Google Play Order ID (format: GPA.xxxx-xxxx-xxxx-xxxx).</Text>
+            <Text style={styles.listItem}>• The App Store Order ID / Transaction ID from your Apple email receipt.</Text>
           </View>
           <Text style={styles.paragraph}>
-            Note: Refunds are processed entirely through the Google Play Store. Once approved in our Google Play Console, the time taken for the funds to return to your account is determined by Google’s banking partners (typically 1-5 business days).
+            Note: Refunds are processed entirely through the Apple App Store. Once approved by Apple, the time taken for the funds to return to your account is determined by Apple’s banking partners (typically 1-5 business days).
           </Text>
 
-          <Text style={styles.heading}>5. Google Play Refund Policy</Text>
+          <Text style={styles.heading}>5. Apple App Store Refund Policy</Text>
           <Text style={styles.paragraph}>
-            As payments are processed by Google, users may also request a refund directly through Google Play within 48 hours of purchase if the service is defective or not delivered. Please refer to the official Google Play Refund Policy for further details.
+            As payments are processed by Apple, users may also request a refund directly from Apple via reportaproblem.apple.com if the service is defective or not delivered. Please refer to the official Apple Media Services Terms and Conditions for further details.
           </Text>
 
           <Text style={styles.heading}>6. Cancellation Policy</Text>
@@ -91,7 +91,7 @@ export default function RefundPolicyScreen() {
 
           <Text style={styles.heading}>7. Disputes & Chargebacks</Text>
           <Text style={styles.paragraph}>
-            If you experience an issue with a transaction, we strongly encourage you to contact our support team or Google Play Support before initiating a chargeback.
+            If you experience an issue with a transaction, we strongly encourage you to contact our support team or Apple Support before initiating a chargeback.
           </Text>
           <Text style={styles.paragraph}>
             Initiating a fraudulent chargeback (for example, falsely claiming a valid purchase as unauthorized) may result in permanent suspension of your account and associated device identifiers from our platform.
