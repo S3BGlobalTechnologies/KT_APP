@@ -10,9 +10,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+
+// A TextInput (non-editable) whose text we update via setNativeProps for a
+// lag-free live number, and whose colour animates with the satisfaction value.
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 // Default label shown above the feedback slider. Callers can override via the
 // `feedbackLabel` prop.
@@ -86,12 +91,12 @@ function FeedbackSlider({ value, onChange, disabled, styles }) {
   onChangeRef.current = onChange;
   disabledRef.current = disabled;
 
-  // The live % number is slider-LOCAL state. Driving it from the parent made the
-  // whole reading (heavy typewriter text) re-render on every gesture frame, which
-  // starved the JS thread so the number only caught up on release. Local state
-  // keeps the per-frame re-render tiny, so it tracks the drag. The parent is told
-  // the final value on release (it only needs it for submit).
-  const [display, setDisplay] = useState(Math.round(value));
+  // The live % number is written IMPERATIVELY via setNativeProps every gesture
+  // frame — no React re-render. Driving it through state (parent OR slider-local)
+  // let React batch the updates during the drag, so the number only caught up on
+  // release; a direct native prop write tracks the thumb with zero lag. The parent
+  // is told the final value on release (it only needs it to submit).
+  const numRef = useRef(null);
 
   const frac = useRef(new Animated.Value(value / 100)).current; // 0..1 position
   const grab = useRef(new Animated.Value(0)).current; // 0..1 thumb press pop
@@ -117,7 +122,7 @@ function FeedbackSlider({ value, onChange, disabled, styles }) {
     const c = Math.max(0, Math.min(1, f));
     fracValRef.current = c;
     frac.setValue(c); // smooth visual: fill / colour / thumb / emojis
-    setDisplay(Math.round(c * 100)); // live number (cheap, slider-only re-render)
+    numRef.current?.setNativeProps({ text: `${Math.round(c * 100)}%` }); // live, no re-render
   };
   const springTo = (v) =>
     Animated.spring(grab, { toValue: v, useNativeDriver: false, friction: 6, tension: 140 }).start();
@@ -156,7 +161,14 @@ function FeedbackSlider({ value, onChange, disabled, styles }) {
 
   return (
     <View style={styles.sliderWrap}>
-      <Animated.Text style={[styles.sliderValue, { color: A.fillColor }]}>{display}%</Animated.Text>
+      <AnimatedTextInput
+        ref={numRef}
+        editable={false}
+        pointerEvents="none"
+        underlineColorAndroid="transparent"
+        defaultValue={`${Math.round(value)}%`}
+        style={[styles.sliderValue, { color: A.fillColor }]}
+      />
 
       <View style={styles.sliderRow}>
         <Animated.Text
@@ -375,6 +387,8 @@ const makeStyles = (colors) => StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
     letterSpacing: 0.5,
+    padding: 0,
+    includeFontPadding: false,
     // color is set inline (animated red → amber → green)
   },
   sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
