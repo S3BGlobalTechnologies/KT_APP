@@ -803,7 +803,7 @@ function OnboardingWizard() {
       >
         <View style={styles.maOverlay}>
           <View style={styles.maCard}>
-            <Text style={styles.maTitle}>{t('mindAnalysisLanguageTitle')}</Text>
+            <Text style={styles.maTitle} numberOfLines={1} adjustsFontSizeToFit>{t('mindAnalysisLanguageTitle')}</Text>
             <Text style={styles.maDesc}>{t('mindAnalysisLanguageDesc')}</Text>
             <ScrollView
               style={styles.maLangList}

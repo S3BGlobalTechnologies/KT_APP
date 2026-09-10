@@ -19,10 +19,9 @@ import {
 // lag-free live number, and whose colour animates with the satisfaction value.
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
-// Default label shown above the feedback slider. Callers can override via the
+// The feedback label + button + hints are translated (t('maFeedback*')) so they
+// render in the app UI language; callers can still override the label via the
 // `feedbackLabel` prop.
-const DEFAULT_FEEDBACK_LABEL =
-  'Feedback for mind analysis : How much of this analysis is relatable according to your current situation';
 
 // Satisfaction gradient stops for the fill + percentage number: red (low) →
 // amber (mid) → green (high). These are the semantic "how relatable" colors;
@@ -137,12 +136,12 @@ function FeedbackSlider({ value, onChange, disabled, styles }) {
       onStartShouldSetPanResponderCapture: () => !disabledRef.current,
       onMoveShouldSetPanResponderCapture: () => !disabledRef.current,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => {
+      onPanResponderGrant: () => {
+        // Grab-and-drag only: anchor to the CURRENT value and never jump to the
+        // touch point. A plain tap (no drag) therefore leaves the value unchanged
+        // — the slider moves only while the finger actually slides.
         springTo(1);
-        const w = trackWRef.current || 1;
-        const f = Math.max(0, Math.min(1, e.nativeEvent.locationX / w));
-        startFracRef.current = f;
-        applyFrac(f);
+        startFracRef.current = fracValRef.current;
       },
       onPanResponderMove: (e, g) => {
         const w = trackWRef.current || 1;
@@ -301,11 +300,11 @@ export default function MindAnalysisReading({
 
       {showFeedback ? (
         <View style={styles.feedbackBox}>
-          <Text style={styles.feedbackLabel}>{feedbackLabel || DEFAULT_FEEDBACK_LABEL}</Text>
+          <Text style={styles.feedbackLabel}>{feedbackLabel || t('maFeedbackLabel')}</Text>
           <FeedbackSlider value={pct} onChange={setPct} disabled={submitted} styles={styles} />
 
           {submitted ? (
-            <Text style={styles.feedbackThanks}>✓ Thanks! Your feedback was submitted.</Text>
+            <Text style={styles.feedbackThanks}>✓ {t('maFeedbackThanks')}</Text>
           ) : (
             <>
               {fbError ? <Text style={styles.feedbackError}>{fbError}</Text> : null}
@@ -318,7 +317,7 @@ export default function MindAnalysisReading({
                 {submitting ? (
                   <ActivityIndicator color={colors.onGold} />
                 ) : (
-                  <Text style={styles.submitText}>Submit Feedback</Text>
+                  <Text style={styles.submitText}>{t('maFeedbackSubmit')}</Text>
                 )}
               </TouchableOpacity>
             </>
@@ -346,7 +345,7 @@ export default function MindAnalysisReading({
             </LinearGradient>
           </TouchableOpacity>
           {continueDisabled ? (
-            <Text style={styles.ctaHint}>Submit your feedback to continue to chat.</Text>
+            <Text style={styles.ctaHint}>{t('maFeedbackContinueHint')}</Text>
           ) : null}
         </>
       ) : null}
