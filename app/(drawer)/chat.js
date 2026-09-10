@@ -30,8 +30,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
 import { createOrGetKkAgentProfile } from '@/lib/kkAgentProfile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing } from 'react-native';
 
@@ -59,12 +58,11 @@ export default function Chat() {
   const navigation = useNavigation();
   const analyzingOpacity = useRef(new Animated.Value(0)).current;
   const timerPulse = useRef(new Animated.Value(1)).current;
-  // Read astrologer selection from both expo-router and react-navigation
+  // Astrologer selection comes through expo-router's search params.
   const paramsExpo = useLocalSearchParams();
-  const route = useRoute();
-  const astrologerNameParam = paramsExpo?.astrologerName || route?.params?.astrologerName || null;
-  const astrologerImageParam = paramsExpo?.astrologerImage || route?.params?.astrologerImage || null;
-  const resumeSessionIdParam = paramsExpo?.resumeSessionId || route?.params?.resumeSessionId || null;
+  const astrologerNameParam = paramsExpo?.astrologerName || null;
+  const astrologerImageParam = paramsExpo?.astrologerImage || null;
+  const resumeSessionIdParam = paramsExpo?.resumeSessionId || null;
   const [heights, setHeight] = useState(44); // initial height
 
   const languageMap = {
