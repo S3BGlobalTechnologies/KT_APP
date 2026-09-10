@@ -3,7 +3,7 @@ import { useLanguage } from '@/lib/i18n';
 import { logMetaEvent } from '@/utils/metaEvents';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,

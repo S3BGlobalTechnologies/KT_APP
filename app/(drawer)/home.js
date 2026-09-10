@@ -21,8 +21,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
 import { verifyToken } from '@/utils/auth'; // ✅ use existing auth.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DrawerActions, useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const fmtTime = (seconds) => {
@@ -683,7 +682,7 @@ const formatTime = (seconds) => {
                     phone: profile?.phone,
                   },
                 });
-                navigation.dispatch(DrawerActions.openDrawer());
+                navigation.openDrawer();
               }}
             >
               <View style={styles.menuIcon}>
