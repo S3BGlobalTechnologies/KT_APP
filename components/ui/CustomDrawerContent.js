@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { DrawerContentScrollView } from '@react-navigation/drawer';
 import {
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -250,13 +250,13 @@ useFocusEffect(
   
   return (
     <>
-    <DrawerContentScrollView
+    <ScrollView
       style={{ backgroundColor: colors.bg }}
+      showsVerticalScrollIndicator={false}
       contentContainerStyle={{
-        // DrawerContentScrollView normally applies the safe-area insets itself,
-        // but passing contentContainerStyle replaces them — which is why the
-        // header sat under the status bar and Delete Account was cut off by the
-        // gesture bar. Add them back on top of the design padding.
+        // Apply the safe-area insets manually (a plain ScrollView does not add
+        // them), otherwise the header sits under the status bar and Delete
+        // Account is cut off by the gesture bar. Added on top of design padding.
         paddingTop: insets.top + 15,
         paddingBottom: insets.bottom + 15,
         paddingHorizontal: horizontalPadding,
@@ -347,7 +347,7 @@ useFocusEffect(
 
 
       <Text style={styles.version}>{t('appVersion')} 1.0.0</Text>
-    </DrawerContentScrollView>
+    </ScrollView>
 
     {/* Outside the scroll view: nested in the 300px drawer panel the dialog
         laid out against that width and overflowed the screen. */}
