@@ -5,18 +5,30 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
-// Default label shown above the feedback slider. Callers can override via the
+// A TextInput (non-editable) whose text we update via setNativeProps for a
+// lag-free live number, and whose colour animates with the satisfaction value.
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
+// The feedback label + button + hints are translated (t('maFeedback*')) so they
+// render in the app UI language; callers can still override the label via the
 // `feedbackLabel` prop.
-const DEFAULT_FEEDBACK_LABEL =
-  'Feedback for mind analysis : How much of this analysis is relatable according to your current situation';
+
+// Satisfaction gradient stops for the fill + percentage number: red (low) →
+// amber (mid) → green (high). These are the semantic "how relatable" colors;
+// the rest of the slider chrome uses the app theme.
+const SAT_RED = '#F04438';
+const SAT_AMBER = '#F5A623';
+const SAT_GREEN = '#12B76A';
 
 /** Reveals text a few characters at a time. `skip` jumps straight to the end. */
 export const useTypewriter = (fullText, tickMs = 16, charsPerTick = 2) => {
@@ -59,56 +71,136 @@ export const useTypewriter = (fullText, tickMs = 16, charsPerTick = 2) => {
 };
 
 /**
- * A dependency-free 0-100% slider built on the core `PanResponder` (no native
- * module, so it ships over-the-air). Tap anywhere on the track to jump there,
- * or drag the thumb. Controlled: the parent owns `value`.
+ * An animated, dependency-free 0-100% satisfaction slider (core `PanResponder`
+ * + `Animated`, so it ships over-the-air). Tap anywhere on the track or drag
+ * the thumb. As it moves, the fill and the big percentage number transition
+ * smoothly red → amber → green, and the flanking 😔 / 😃 emojis grow toward
+ * whichever end you approach. Controlled: the parent owns `value`.
+ *
+ * The visuals are driven by an `Animated.Value` updated via `setValue` on every
+ * gesture frame, so the bar/colour stay 60fps-smooth independent of React
+ * re-renders; `onChange` reports the rounded value for the number + submit.
  */
 function FeedbackSlider({ value, onChange, disabled, styles }) {
   const trackWRef = useRef(1);
-  const startRef = useRef(0);
+  const startFracRef = useRef(value / 100);
+  const fracValRef = useRef(value / 100);
   const onChangeRef = useRef(onChange);
   const disabledRef = useRef(disabled);
   onChangeRef.current = onChange;
   disabledRef.current = disabled;
 
-  const clamp = (v) => Math.max(0, Math.min(100, v));
+  // The live % number is written IMPERATIVELY via setNativeProps every gesture
+  // frame — no React re-render. Driving it through state (parent OR slider-local)
+  // let React batch the updates during the drag, so the number only caught up on
+  // release; a direct native prop write tracks the thumb with zero lag. The parent
+  // is told the final value on release (it only needs it to submit).
+  const numRef = useRef(null);
+
+  const frac = useRef(new Animated.Value(value / 100)).current; // 0..1 position
+  const grab = useRef(new Animated.Value(0)).current; // 0..1 thumb press pop
+
+  // Build the interpolations ONCE so a per-frame re-render doesn't allocate new
+  // animated nodes.
+  const anims = useRef(null);
+  if (anims.current === null) {
+    anims.current = {
+      fillColor: frac.interpolate({ inputRange: [0, 0.5, 1], outputRange: [SAT_RED, SAT_AMBER, SAT_GREEN] }),
+      fillWidth: frac.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+      thumbLeft: frac.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+      thumbScale: grab.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] }),
+      sadScale: frac.interpolate({ inputRange: [0, 0.4], outputRange: [1.4, 0.85], extrapolate: 'clamp' }),
+      sadOpacity: frac.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0.4], extrapolate: 'clamp' }),
+      happyScale: frac.interpolate({ inputRange: [0.6, 1], outputRange: [0.85, 1.4], extrapolate: 'clamp' }),
+      happyOpacity: frac.interpolate({ inputRange: [0.5, 1], outputRange: [0.4, 1], extrapolate: 'clamp' }),
+    };
+  }
+  const A = anims.current;
+
+  const applyFrac = (f) => {
+    const c = Math.max(0, Math.min(1, f));
+    fracValRef.current = c;
+    frac.setValue(c); // smooth visual: fill / colour / thumb / emojis
+    numRef.current?.setNativeProps({ text: `${Math.round(c * 100)}%` }); // live, no re-render
+  };
+  const springTo = (v) =>
+    Animated.spring(grab, { toValue: v, useNativeDriver: false, friction: 6, tension: 140 }).start();
+  const reportFinal = () => onChangeRef.current(Math.round(fracValRef.current * 100));
 
   const pan = useRef(
     PanResponder.create({
+      // Capture the touch so a surrounding ScrollView can't steal the drag
+      // (which would drop the move events mid-gesture).
       onStartShouldSetPanResponder: () => !disabledRef.current,
       onMoveShouldSetPanResponder: () => !disabledRef.current,
-      onPanResponderGrant: (e) => {
-        const w = trackWRef.current || 1;
-        const p = clamp(Math.round((e.nativeEvent.locationX / w) * 100));
-        startRef.current = p;
-        onChangeRef.current(p);
+      onStartShouldSetPanResponderCapture: () => !disabledRef.current,
+      onMoveShouldSetPanResponderCapture: () => !disabledRef.current,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        // Grab-and-drag only: anchor to the CURRENT value and never jump to the
+        // touch point. A plain tap (no drag) therefore leaves the value unchanged
+        // — the slider moves only while the finger actually slides.
+        springTo(1);
+        startFracRef.current = fracValRef.current;
       },
       onPanResponderMove: (e, g) => {
         const w = trackWRef.current || 1;
-        const p = clamp(Math.round(startRef.current + (g.dx / w) * 100));
-        onChangeRef.current(p);
+        applyFrac(startFracRef.current + g.dx / w);
+      },
+      onPanResponderRelease: () => {
+        springTo(0);
+        reportFinal();
+      },
+      onPanResponderTerminate: () => {
+        springTo(0);
+        reportFinal();
       },
     })
   ).current;
 
   return (
-    <View>
-      <Text style={styles.sliderValue}>{value}%</Text>
-      <View
-        style={styles.sliderTouch}
-        onLayout={(e) => {
-          trackWRef.current = e.nativeEvent.layout.width || 1;
-        }}
-        {...pan.panHandlers}
-      >
-        <View style={styles.sliderTrack}>
-          <View style={[styles.sliderFill, { width: `${value}%` }]} />
+    <View style={styles.sliderWrap}>
+      <AnimatedTextInput
+        ref={numRef}
+        editable={false}
+        pointerEvents="none"
+        underlineColorAndroid="transparent"
+        defaultValue={`${Math.round(value)}%`}
+        style={[styles.sliderValue, { color: A.fillColor }]}
+      />
+
+      <View style={styles.sliderRow}>
+        <Animated.Text
+          style={[styles.sliderEmoji, { transform: [{ scale: A.sadScale }], opacity: A.sadOpacity }]}
+        >
+          😔
+        </Animated.Text>
+
+        <View
+          style={styles.sliderTouch}
+          onLayout={(e) => {
+            trackWRef.current = e.nativeEvent.layout.width || 1;
+          }}
+          {...pan.panHandlers}
+        >
+          <View style={styles.sliderTrack}>
+            <Animated.View
+              style={[styles.sliderFill, { width: A.fillWidth, backgroundColor: A.fillColor }]}
+            />
+          </View>
+          <Animated.View
+            style={[
+              styles.sliderThumb,
+              { left: A.thumbLeft, borderColor: A.fillColor, transform: [{ translateX: -13 }, { scale: A.thumbScale }] },
+            ]}
+          />
         </View>
-        <View style={[styles.sliderThumb, { left: `${value}%` }]} />
-      </View>
-      <View style={styles.sliderScaleRow}>
-        <Text style={styles.sliderScaleText}>0%</Text>
-        <Text style={styles.sliderScaleText}>100%</Text>
+
+        <Animated.Text
+          style={[styles.sliderEmoji, { transform: [{ scale: A.happyScale }], opacity: A.happyOpacity }]}
+        >
+          😃
+        </Animated.Text>
       </View>
     </View>
   );
@@ -208,11 +300,11 @@ export default function MindAnalysisReading({
 
       {showFeedback ? (
         <View style={styles.feedbackBox}>
-          <Text style={styles.feedbackLabel}>{feedbackLabel || DEFAULT_FEEDBACK_LABEL}</Text>
+          <Text style={styles.feedbackLabel}>{feedbackLabel || t('maFeedbackLabel')}</Text>
           <FeedbackSlider value={pct} onChange={setPct} disabled={submitted} styles={styles} />
 
           {submitted ? (
-            <Text style={styles.feedbackThanks}>✓ Thanks! Your feedback was submitted.</Text>
+            <Text style={styles.feedbackThanks}>✓ {t('maFeedbackThanks')}</Text>
           ) : (
             <>
               {fbError ? <Text style={styles.feedbackError}>{fbError}</Text> : null}
@@ -225,7 +317,7 @@ export default function MindAnalysisReading({
                 {submitting ? (
                   <ActivityIndicator color={colors.onGold} />
                 ) : (
-                  <Text style={styles.submitText}>Submit Feedback</Text>
+                  <Text style={styles.submitText}>{t('maFeedbackSubmit')}</Text>
                 )}
               </TouchableOpacity>
             </>
@@ -253,7 +345,7 @@ export default function MindAnalysisReading({
             </LinearGradient>
           </TouchableOpacity>
           {continueDisabled ? (
-            <Text style={styles.ctaHint}>Submit your feedback to continue to chat.</Text>
+            <Text style={styles.ctaHint}>{t('maFeedbackContinueHint')}</Text>
           ) : null}
         </>
       ) : null}
@@ -286,35 +378,44 @@ const makeStyles = (colors) => StyleSheet.create({
     padding: 16,
   },
   feedbackLabel: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  sliderWrap: { marginTop: 6 },
   sliderValue: {
-    color: colors.gold,
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: '900',
     textAlign: 'center',
-    marginTop: 14,
-    marginBottom: 6,
+    marginTop: 8,
+    marginBottom: 12,
+    letterSpacing: 0.5,
+    padding: 0,
+    includeFontPadding: false,
+    // color is set inline (animated red → amber → green)
   },
-  sliderTouch: { height: 36, justifyContent: 'center' },
+  sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sliderEmoji: { fontSize: 26, width: 30, textAlign: 'center' },
+  sliderTouch: { flex: 1, height: 40, justifyContent: 'center' },
   sliderTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.ctrlBorder || colors.surfaceBorder,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.ctrlBg || colors.surfaceStrong || colors.surfaceBorder,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
     overflow: 'hidden',
   },
-  sliderFill: { height: '100%', borderRadius: 4, backgroundColor: colors.gold },
+  sliderFill: { height: '100%', borderRadius: 6 }, // width + color set inline
   sliderThumb: {
     position: 'absolute',
-    top: 4,
-    width: 24,
-    height: 24,
-    marginLeft: -12,
-    borderRadius: 12,
-    backgroundColor: colors.gold,
-    borderWidth: 3,
-    borderColor: colors.surface,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.surface,
+    borderWidth: 4,
+    // borderColor set inline (matches the fill)
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  sliderScaleRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  sliderScaleText: { color: colors.textMuted, fontSize: 12 },
 
   feedbackError: { color: '#FF9B8A', fontSize: 13, marginTop: 12 },
   feedbackThanks: { color: '#7BE6A8', fontSize: 14, fontWeight: '700', marginTop: 14, textAlign: 'center' },
